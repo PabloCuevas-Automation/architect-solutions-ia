@@ -1,0 +1,14 @@
+# Audit Personal de Servicios - 27 Enero 2026
+
+| Servicio | Datos que tienen | PII identificada | ¿Leí términos? | ¿Puedo eliminar cuenta? |
+|----------|------------------|------------------|----------------|-------------------------|
+| Gmail    | emails, contactos, calendario, ubicación | Todo es PII | No | Si, pero es un IdP, por ende si elimino cuenta, debo eliminar dependecias extras. En un lapso de 30 dias el derecho al olvido se convierte en realidad. Pierdo datos del servidor fisico. |
+| LinkedIn | perfil, conexiones, mensajes, historial búsquedas | Todo es PII | No | Si, pierdo la informacion que contenga dentro. En un lapso de 30 dias el derecho al olvido se convierte en realidad. Pierdo datos del servidor fisico. |
+|Whatsapp | mensajes, ubicacion, galeria, contactos, camara, audio, conexiones direccion IP, modelo de movil/pc, sistema operativo | Todo es PII | No | Si, en un lapso de 30 dias el derecho al olvido se convierte en realidad. Pierdo datos del servidor fisico. |
+| Notion | nombre, email, telefono, facturacion,direccion IP, modelo de movil/pc, sistema operativo direccion IP, modelo de movil/pc, sistema operativo, todo el flujo de mi trabajo, decisiones estructurales y conocimiento  | Todo es PII | No | Si. En un lapso de 30 dias el derecho al olvido se convierte en realidad. Pierdo datos del servidor fisico. |
+| Facebook | nombre, email, telefono, facturacion, direccion IP, modelo de movil/pc, sistema operativo,  | Todo es PII | No | Si. En un lapso de 30 dias el derecho al olvido se convierte en realidad. Pierdo datos del servidor fisico.|
+| ChatGPT | nombre, email, telefono, facturacion, direccion IP, modelo de movil/pc, sistema operativo, flujo de conversaciones  | Todo es PII | No | Si. En un lapso de 30 dias el derecho al olvido se convierte en realidad. Pierdo datos del servidor fisico.|
+| PS Store | nombre, email, telefono, facturacion, direccion IP, modelo de movil/pc, sistema operativo, compras | Todo es PII | No | Si. En un lapso de 30 dias el derecho al olvido se convierte en realidad. Pierdo datos del servidor fisico. Se deben guardar el registro de tus facturas y transacciones durante 5 a 10 años.|
+| Instagram | nombre, email, telefono, facturacion, direccion IP, modelo de movil/pc, sistema operativo,  | Todo es PII | No | Si. En un lapso de 30 dias el derecho al olvido se convierte en realidad. Pierdo datos del servidor fisico.|
+| Netflix | nombre, email, telefono, facturacion, direccion IP, modelo de movil/pc, sistema operativo, consumo  | Todo es PII| No | Si. En un lapso de 30 dias el derecho al olvido se convierte en realidad. Pierdo datos del servidor fisico.Se deben guardar el registro de tus facturas y transacciones durante 5 a 10 años.|
+| Youtube | nombre, email, telefono, facturacion, direccion IP, modelo de movil/pc, sistema operativo, consumo  | Todo es PII | No | Si. En un lapso de 30 dias el derecho al olvido se convierte en realidad. Pierdo datos del servidor fisico.|
