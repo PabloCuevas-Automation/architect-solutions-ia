@@ -1,7 +1,7 @@
 # Análisis de Estado: Pablo Cuevas — Febrero 2026
-**Fecha**: 21 de Febrero 2026  
-**Propósito**: Base para reestructuración del roadmap post-Fase 0.5  
-**Fuentes**: Daily logs 10-19/02, ADR-001/002/003, PageSpeed, análisis conversacional
+**Fecha**: 21 de Febrero 2026 — **Última actualización**: 22/02/2026  
+**Propósito**: Inventario de estado real — competencias, deuda técnica, posicionamiento  
+**Fuentes**: Daily logs 10-21/02, ADRs serie 000 y 100, PageSpeed, análisis conversacional, repositorio GitHub
 
 ---
 
@@ -55,21 +55,34 @@ Esto no es un resultado académico. Es un resultado de producción.
 
 ### 2.3 Documentación producida
 
+**Proyecto web (10-19/02):**
 - 9 estados del proyecto (.md) — uno por sesión significativa
-- ADR-001: Arquitectura del proyecto (ES/EN/IT)
-- ADR-002: Decisión legal/compliance
-- ADR-003: Portfolio diferido a Fase 2
+- ADR-001 proyecto web: Arquitectura general del sistema
+- ADR-002 proyecto web: Estrategia legal (iubenda + términos propios)
+- ADR-003 proyecto web: Portfolio diferido a Fase 2 (sin proyectos reales → no mostrar nada)
 - Tabla histórica de bugs resueltos
 - Convenciones de código documentadas
 - Reglas de qué NO modificar
+
+**Reestructuración del knowledge base (21/02):**
+- ADR-101: Sección de Validación añadida — métricas reales del proyecto web
+- ADR-102: Proyecto Académico como Infraestructura de Negocio Real (nuevo)
+- ADR-103: Perfil de Aprendizaje — Construcción sobre Abstracción (nuevo)
+- `ROAD-MAP.md` reestructurado: estado real post-proyecto web, timeline recalibrado, tabla ADRs por series
+- `DAILY-LOG.md` actualizado: gap 10/02–21/02 cubierto
+- `21-02-analisis-estado-pablo-cuevas.md` (este documento)
+- `21-02-recalibracion_fase_1.md` — guía táctica activa renombrada
+- `ROADMAP_ARCHITECT_SOLUTION_IA.md` — conversión del PDF v4.0 a markdown
+- Repositorio GitHub reestructurado con arquitectura de carpetas: `adr/adr-carrera/`, `adr/adr-proyectos/`, `buenas-practicas/`, `analisis-estado-carrera/`, `roadmap-completo/`
+- Serie de numeración ADRs establecida: serie 000 (principios transversales) / serie 100 (carrera autodidacta)
 
 ### 2.4 Competencias demostradas
 
 **Técnicas:**
 - HTML5 semántico
 - CSS avanzado (variables, especificidad, glass morphism, animaciones)
-- JavaScript funcional (DOM, eventos, módulos ES6, IntersectionObserver)
-- GSAP + ScrollTrigger
+- JavaScript funcional (DOM, eventos, módulos ES6, IntersectionObserver — guiado mediante IA)
+- GSAP + ScrollTrigger (guiado mediante IA)
 - Firebase SDK (módulos JS)
 - Git + GitHub (CI/CD con Vercel)
 - Optimización de performance
@@ -126,11 +139,8 @@ Tomaste la decisión correcta de NO ir a Suanfarma (empresa farmacéutica multin
 
 | Item | Urgencia | Costo | Solución |
 |------|----------|-------|---------|
-| Firebase no declarado en Privacy Policy | Media | €0 | Actualizar sección 7 termini.html (snippet listo) |
-| Numeración inconsistente en ADRs | Baja | €0 | Renombrar archivos y cabeceras |
 | Notificación leads Firebase | Alta | €0 | Primera automatización N8N |
 | Email profesional pablo@pablocuevas.it | Media | €3-5/mes | Cuando haya primer ingreso |
-| autocomplete en inputs formulario | Baja | €0 | 15 minutos de trabajo |
 | Upgrade iubenda (declarar Firebase formalmente) | Baja | €27/mes | Cuando primer cliente de pago |
 
 ---
@@ -226,6 +236,6 @@ Todo lo demás — Python, AWS, arquitecturas complejas, el roadmap de 5 fases �
 ---
 
 **Preparado por**: Claude Sonnet (Anthropic) como análisis externo  
-**Para uso de**: Pablo Cuevas — reestructuración de roadmap  
-**Fecha**: 21 de Febrero 2026  
-**Siguiente acción recomendada**: Leer este documento + archivos del proyecto + instrucciones originales del roadmap, y construir el nuevo plan de acción de los próximos 30-60 días
+**Para uso de**: Pablo Cuevas  
+**Fecha creación**: 21 de Febrero 2026 — **Última actualización**: 22/02/2026  
+**Siguiente acción**: Instalar N8N local → primera automatización Firebase Firestore → notificación leads

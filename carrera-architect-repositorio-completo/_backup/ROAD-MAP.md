@@ -1,6 +1,6 @@
 # ROADMAP ACTUAL — FEBRERO 2026
 
-**Fecha última actualización:** 21/02/2026  
+**Fecha última actualización:** 22/02/2026  
 **Estado:** 🔄 Transición activa — Post-proyecto web, Pre-N8N productivo
 
 ---
@@ -27,35 +27,35 @@
 ## Documentos vigentes
 
 ### Guía táctica activa
-- ✅ `27-1__VERSION_2_0__RECALIBRACION_ROADMAP_FASE_0_-_FASE_0_5.md` — plan de 42 días (días 1-25 ejecutados, días 26-42 como referencia de continuidad)
+- ✅ `21-02-recalibracion_fase_1.md` — plan Fase 1 activo (días 1-25 ejecutados, días 26-42 en curso)
 
 ### Visión de largo plazo (NO plan táctico)
-- ✅ `ROADMAP__ARCHITECT_SOLUTION_IA_COMPLETO.pdf` — Fases 2-4 intactas como brújula
+- ✅ `ROADMAP_ARCHITECT_SOLUTION_IA.md` — Fases 2-4 intactas como brújula
 
-### Análisis de estado (nuevo — usar como base de reestructuración)
+### Análisis de estado
 - ✅ `21-02-analisis-estado-pablo-cuevas.md` — inventario real de competencias, deuda técnica y posicionamiento
-
----
-
-## Documentos históricos (NO usar como referencia activa)
-
-- ❌ `26-01_RECALIBRACION...` (v1.0, eliminado)
-- ❌ `PLAN_DE_ACCION__PRIMEROS_3_MESES_.pdf` (asumía Python first — archivado)
-- ❌ `PLAN_DE_ACCION__SEGUNDOS_3_MESES_.pdf` (basado en base obsoleta — archivado)
-- ❌ `ADICIONE_FASE1_ROADMAP.pdf` (supersedido — archivado)
-- ❌ `CHECKLIST__ROADMAP_COMPLETO.pdf` (desactualizado — archivado)
 
 ---
 
 ## ADRs vigentes
 
+### Serie 000 — Principios y metodología transversal
+
+| ID | Decisión | Estado |
+|----|----------|--------|
+| ADR-000 | Principios arquitectónicos fundamentales | ✅ Activo |
+| ADR-001 | Documentación de decisiones vía ADRs | ✅ Activo |
+| ADR-002 | Manejo de PII — compliance-first obligatorio | ✅ Activo |
+| ADR-003 | Naming conventions kebab-case | ✅ Activo |
+
+### Serie 100 — Decisiones de la carrera autodidacta
+
 | ID | Decisión | Estado | Validación |
 |----|----------|--------|------------|
-| ADR-000 | Pensamiento sistémico antes que skills verticales | ✅ Activo | Validado: proyecto web construido como sistema, no como código |
-| ADR-001 | JavaScript > Python en Fase 1 | ✅ Activo | Validado: examen aprobado, proyecto web en JS, Firebase integrado |
-| ADR-003 | Naming conventions kebab-case | ✅ Activo | En uso en todo el repositorio |
-
-*Nota: ADR-002 existió como decisión implícita de priorización. ADR-003 es Naming Conventions (29/01). Los ADRs del proyecto web (arquitectura, legal, portfolio) viven en el repositorio del proyecto web — no en este knowledge base de carrera.*
+| ADR-100 | Pensamiento sistémico antes que skills verticales | ✅ Activo | Validado: proyecto web construido como sistema, no como código |
+| ADR-101 | Priorizar JavaScript sobre Python en Fase 1 | ✅ Validado | Examen aprobado 16/02, pablocuevas.it en producción, Firebase integrado |
+| ADR-102 | Proyecto académico como infraestructura de negocio real | ✅ Validado | 98/100 PageSpeed, pipeline de leads activo, compliance verificado |
+| ADR-103 | Perfil de aprendizaje: construcción sobre abstracción | ✅ Activo | Documento de autoconocimiento permanente — sin fecha de revisión |
 
 ---
 
