@@ -46,7 +46,7 @@ Estas son estimaciones conservadoras — incluyen fricción real, bugs y consoli
 
 ---
 
-## BLOQUE 0 — PREPARACIÓN N8N
+## BLOQUE 0 — PREPARACIÓN N8N ✅
 **Sesiones estimadas: 3**
 
 ### Distribución sugerida
@@ -80,7 +80,7 @@ Estas son estimaciones conservadoras — incluyen fricción real, bugs y consoli
 Puedes explicar oralmente qué es un item en N8N y por qué todo es JSON, sin mirar apuntes. Si no puedes, repite la Sesión 3.
 
 ### Registro
-- Sesiones reales usadas: ___
+- Sesiones reales usadas: 3
 - Observaciones: ___
 
 ---
@@ -137,8 +137,8 @@ Puedes explicar oralmente qué es un item en N8N y por qué todo es JSON, sin mi
 Construyes un Code node que transforma, filtra y enriquece items sin consultar sintaxis básica. Entiendes qué pasa cuando el array de salida está vacío. Puedes explicar por qué usas spread.
 
 ### Registro
-- Sesiones reales usadas: ___
-- Observaciones: ___
+- Sesiones reales usadas: 2
+- Observaciones: Bloque 1 lo he podido hacer en 2 dias (01/03 y 02/03)
 
 ---
 
@@ -181,8 +181,8 @@ Construyes un Code node que transforma, filtra y enriquece items sin consultar s
 Tienes un workflow que se dispara automáticamente cuando llega un lead desde tu formulario. Funciona solo, sin que presiones ejecutar.
 
 ### Registro
-- Sesiones reales usadas: ___
-- Observaciones: ___
+- Sesiones reales usadas: 1
+- Observaciones: Hice toda el bloque con una sesion real mediante Claude.
 
 ---
 
@@ -267,7 +267,7 @@ Tienes 3+ APIs integradas en workflows reales. Sabes dónde van las credenciales
 Construyes workflows que toman caminos diferentes según los datos. Tienes implementado el patrón de fallback de 3 niveles al menos una vez. Puedes explicar cuándo usas IF vs Switch.
 
 ### Registro
-- Sesiones reales usadas: ___
+- Sesiones reales usadas: 3
 - Observaciones: ___
 
 ---
@@ -591,11 +591,11 @@ Actualiza esto cuando completes cada bloque:
 
 | Bloque | Estado | Sesiones estimadas | Sesiones reales | Notas |
 |--------|--------|--------------------|-----------------|-------|
-| 0 | ⬜ Pendiente | 3 | | |
-| 1 | ⬜ Pendiente | 6 | | |
-| 2 | ⬜ Pendiente | 4 | | |
-| 3 | ⬜ Pendiente | 6 | | |
-| 4 | ⬜ Pendiente | 4 | | |
+| 0 | ✅ Completada | 3 | 3 | |
+| 1 | ✅ Completada | 6 | 2 | |
+| 2 | ✅ Completada | 4 | 1 | |
+| 3 | ✅ Completada | 6 | 2 | |
+| 4 | ✅ Completada | 4 | 3 | |
 | PA1 | ⬜ Pendiente | 8 | | |
 | 5 | ⬜ Pendiente | 7 | | |
 | 6 | ⬜ Pendiente | 6 | | |
