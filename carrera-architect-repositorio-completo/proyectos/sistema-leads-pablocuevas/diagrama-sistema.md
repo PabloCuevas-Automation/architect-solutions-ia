@@ -1,11 +1,11 @@
 # DIAGRAMA DE SISTEMA — Sistema de Gestión de Leads
 ## pablocuevas.it — Proyecto Ancla 1
 
-**Versión**: 3.0  
-**Fecha**: 25 de marzo 2026  
+**Versión**: 4.2  
+**Fecha**: 27 de marzo 2026  
 **Estado**: ✅ Diseño validado — pendiente implementación Bloques 5-8  
 **Validado con**: Claude (Anthropic) + Gemini + DeepSeek  
-**Supersede**: diagrama-sistema.md v2.0
+**Supersede**: diagrama-sistema.md v4.1
 
 ---
 
@@ -21,8 +21,8 @@
          ↓
 ┌─────────────────────────────────────────────────────┐
 │  CAPA 2 — PERSISTENCIA INICIAL                      │
-│  Deduplicación atómica en PostgreSQL                │
-│  ON CONFLICT DO NOTHING → rowCount 0 o 1            │
+│  Deduplicación con ventana de tiempo (24h)          │
+│  CTE atómica — devuelve es_nuevo + timestamp_creacion│
 └─────────────────────────────────────────────────────┘
          ↓
 ┌─────────────────────────────────────────────────────┐
@@ -89,45 +89,76 @@ N8N verifica la firma antes de procesar cualquier dato.
 ## CAPA 2 — PERSISTENCIA INICIAL (Deduplicación)
 
 **Propósito:** Registrar el lead antes de cualquier procesamiento 
-y detectar duplicados de forma atómica.
+y detectar duplicados con criterio de negocio real.
+
+### Flujo completo de deduplicación
 
 ```
-[PostgreSQL — operación UPSERT]
-    INSERT INTO leads (email, servizio, ...)
-    ON CONFLICT (email, servizio) DO NOTHING
+[PostgreSQL — CTE atómica]
+    INSERT INTO leads (...) ON CONFLICT (email, servizio) DO NOTHING
+    Devuelve siempre 1 fila: es_nuevo (bool) + timestamp_creacion
 
-    → rowCount = 1 → lead nuevo → INSERT exitoso → continúa a Capa 3
-    → rowCount = 0 → duplicado detectado → [Registrar evento duplicado] → STOP
+    → es_nuevo = TRUE  → lead nuevo → INSERT exitoso → continúa a Capa 3
+
+    → es_nuevo = FALSE → registro ya existe → evalúa timestamp_creacion
+
+        → timestamp_creacion < 24 horas
+            → duplicado real (doble click o reenvío accidental)
+            → [Registrar evento: duplicado_detectado] → STOP
+
+        → timestamp_creacion ≥ 24 horas
+            → cliente legítimo que vuelve a contactar
+            → [UPDATE leads: nuevo messaggio + timestamp_actualizacion]
+            → [Registrar evento: lead_reactivado] → continúa a Capa 3
 ```
 
-**Por qué ON CONFLICT DO NOTHING y no SELECT → IF → INSERT:**
-La operación es atómica — ocurre en un solo viaje a la base de datos.
-No hay ventana de tiempo para race conditions. Dos clicks simultáneos
-en el formulario solo producen un registro. PostgreSQL resuelve 
-la concurrencia a nivel de motor, no N8N a nivel de orquestador.
+### Por qué CTE y no dos queries separadas
 
-**Política de deduplicación — decisión de negocio:**
-- La combinación `email + servizio` es única
-- El primer mensaje recibido prevalece
-- Si el mismo email llega con el mismo servicio pero mensaje 
-  diferente → se bloquea. El primer mensaje es el válido para el MVP.
-- Si el mismo email llega con servicio diferente → se procesa 
-  como lead nuevo. Una persona puede necesitar más de un servicio.
+El ON CONFLICT DO NOTHING resuelve la race condition del doble click
+de forma atómica — sin ventana de tiempo para concurrencia.
 
-**Momento del guardado:**
+Sin CTE, si el INSERT devuelve 0 filas N8N recibe 0 items y el flujo
+se detiene silenciosamente. La CTE garantiza que N8N siempre recibe
+exactamente 1 fila con toda la información necesaria para rutear,
+pase lo que pase en el INSERT.
+
+La ventana de 24 horas resuelve el caso de negocio real — el cliente
+que vuelve un mes después con el mismo email y servicio es un lead
+nuevo legítimo, no un duplicado técnico.
+
+Sin la ventana de tiempo, el UNIQUE CONSTRAINT bloquea silenciosamente
+a ese cliente para siempre — Pablo no lo ve en Telegram, el cliente
+no recibe respuesta. Se pierde un lead real.
+
+### Política de deduplicación — decisión de negocio
+
+| Caso | Tiempo | Acción | Notificación |
+|------|--------|--------|--------------|
+| Mismo email + servizio, < 24h | Duplicado real | Registrar y parar | Ninguna |
+| Mismo email + servizio, ≥ 24h | Lead legítimo | Actualizar y procesar | Telegram normal |
+| Mismo email + servizio diferente | Lead nuevo | INSERT nuevo registro | Telegram normal |
+
+**Decisión documentada:** 24 horas como ventana cubre el doble click
+y los reenvíos del mismo día. Cualquier contacto posterior se trata
+como nuevo. Revisable cuando haya evidencia de que el mercado
+necesita una ventana diferente.
+
+### Momento del guardado
+
 El lead se guarda con estado `pendiente` ANTES de llamar a Abstract,
 antes de Telegram, antes de cualquier procesamiento externo.
 Si todo lo demás falla, el lead ya existe en la base de datos.
 
-**Manejo del resultado en N8N:**
-```
-[Switch por rowCount]
-    → rowCount = 1 → [continúa procesamiento]
-    → rowCount = 0 → [Code node: registra evento duplicado en tabla eventos] → STOP
-```
+### Manejo del resultado en N8N
 
-No se usa Continue on Error porque ON CONFLICT DO NOTHING 
-nunca genera error — siempre es una operación exitosa.
+```
+[IF: es_nuevo === true]
+    → TRUE  → [Registrar evento: lead_recibido] → continúa a Capa 3
+    → FALSE → [Code node: calcula horas desde timestamp_creacion]
+                  → < 24h  → [Registrar evento: duplicado_detectado] → STOP
+                  → ≥ 24h  → [UPDATE leads: messaggio + timestamp_actualizacion]
+                              → [Registrar evento: lead_reactivado] → continúa a Capa 3
+```
 
 **Estado actual:** ⚠️ Pendiente — se implementa en Bloque 5
 
@@ -149,7 +180,7 @@ nunca genera error — siempre es una operación exitosa.
 [HTTP Request a Abstract Email Reputation API]
     Configuración: On Error = Continue, Retry on Fail = 3 intentos con backoff
     
-    → (respuesta válida)    → continúa con datos de Abstract
+    → (respuesta válida)       → continúa con datos de Abstract
     → (error HTTP 500/timeout) → [Registrar evento: abstract_error] → pasa a Nivel 2
 ```
 
@@ -230,7 +261,7 @@ Un email que Abstract no puede verificar merece revisión humana.
 
 ## CAPA 4 — NOTIFICACIÓN
 
-**Propósito:** Informar en tiempo real sobre leads que requieren atención.
+**Propósito:** Informar en tiempo real sobre leads que requieren atención.  
 **Solo notifica:** procesar y revisar_manualmente. Los descartados NO generan notificación.
 
 **Credenciales involucradas:**
@@ -284,6 +315,21 @@ Razón de escalada: Abstract no pudo verificar
 Acción sugerida: verificar por otros medios
 ```
 
+**Lead reactivado (cliente que vuelve ≥ 24h):**
+```
+🔄 LEAD REACTIVADO
+Nome: {nome} {cognome}
+Email: {email}
+Azienda: {azienda}
+Servizio: {servizio}
+Messaggio: {messaggio}
+Hora: {timestamp_roma}
+---
+Nota: este contacto ya existía en el sistema.
+Ha vuelto a contactar con el mismo servicio.
+Primer contacto: {timestamp_creacion_original}
+```
+
 **Manejo de fallo de Telegram:**
 ```
 → (Telegram falla) → [Actualizar estado lead en PostgreSQL: 'notificacion_pendiente']
@@ -308,16 +354,26 @@ el sistema con cada lead, en qué momento y por qué.
 
 **Eventos registrados en tabla eventos:**
 
-| Evento | Cuándo se registra | Campos clave |
-|--------|-------------------|--------------|
-| lead_recibido | Capa 2 — tras INSERT exitoso | timestamp, origen |
-| duplicado_detectado | Capa 2 — rowCount = 0 | timestamp, email, servizio |
-| abstract_consultado | Capa 3 — tras respuesta | resultado o error |
-| abstract_error | Capa 3 — si Abstract falla | código de error, timestamp |
-| clasificacion_realizada | Capa 3 — tras decisión | nivel, accion, razon |
-| notificacion_enviada | Capa 4 — éxito | timestamp |
-| notificacion_pendiente | Capa 4 — fallo | timestamp, motivo |
-| lead_descartado | Capa 3 — rama descartar | razon, nivel_resolucion |
+| Evento | Cuándo se registra | Campos clave en detalle (JSONB) |
+|--------|-------------------|--------------------------------|
+| `lead_recibido` | Capa 2 — es_nuevo=true | `{"origen": "webhook", "es_nuevo": true}` |
+| `duplicado_detectado` | Capa 2 — es_nuevo=false, < 24h | `{"email": "x", "servizio": "y", "horas_desde_creacion": 0.08}` |
+| `lead_reactivado` | Capa 2 — es_nuevo=false, ≥ 24h | `{"timestamp_original": "2026-03-01T10:00:00Z", "dias_desde_creacion": 26}` |
+| `abstract_consultado` | Capa 3 — respuesta de Abstract | `{"status": "deliverable", "smtp_valid": true, "live_site": true, "es_libre": false, "es_desechable": false, "nivel_riesgo": "low"}` |
+| `abstract_error` | Capa 3 — Abstract falla | `{"codigo_error": "500", "mensaje": "timeout", "accion_tomada": "nivel2"}` |
+| `clasificacion_realizada` | Capa 3 — decisión tomada | `{"nivel": "nivel1", "accion": "procesar", "razon": "mail corporativo verificado"}` |
+| `notificacion_enviada` | Capa 4 — Telegram OK | `{"canal": "telegram", "tipo": "procesar"}` |
+| `notificacion_pendiente` | Capa 4 — Telegram falla | `{"canal": "telegram", "error": "timeout", "reintento": true}` |
+| `lead_descartado` | Capa 3 — rama descartar | `{"razon": "email desechable", "nivel": "nivel1"}` |
+
+**Distinción duplicado_detectado vs lead_reactivado:**
+Ambos casos ocurren cuando `es_nuevo = FALSE` — el registro ya existía
+en la DB. El tipo de evento clasifica la intención del sistema.
+El campo `horas_desde_creacion` en el JSONB da el contexto exacto:
+un valor de `0.08` indica doble click accidental ocurrido hace minutos,
+un valor de `600` indica un cliente que volvió semanas después.
+Todo segundo intento queda registrado — ningún contacto se pierde
+en el vacío, incluso los duplicados.
 
 **Deuda técnica:** el nodo de descarte actual solo tiene un Edit Fields 
 básico. Pendiente enriquecerlo con `razon` y `nivel_resolucion` 
@@ -341,7 +397,8 @@ antes de conectar PostgreSQL. — Bloque 5
 - Leads en revisión manual pendientes
 - Leads descartados — razón más frecuente
 - Leads escalados a Nivel 2
-- Leads duplicados detectados
+- Leads duplicados bloqueados
+- Leads reactivados (clientes que volvieron)
 
 **Métricas futuras (cuando haya volumen suficiente):**
 - Porcentaje de leads por servicio solicitado
@@ -372,7 +429,7 @@ antes de conectar PostgreSQL. — Bloque 5
 Los execution logs contienen PII (nombre, email, mensaje del lead).
 Retención máxima de logs: 30 días.
 Configuración: variable de entorno `EXECUTIONS_DATA_MAX_AGE=30`
-en el docker-compose del servidor de producción.
+en el docker-compose del servidor de producción — se configura en Bloque 6.
 
 ---
 
@@ -412,6 +469,7 @@ Sin runbook, el backup no sirve.
 |-------|--------|--------------------------|
 | Webhook sin firma HMAC | 7 | Bots saturan el sistema y agotan créditos de Abstract |
 | Sin deduplicación real | 5 | Leads duplicados en DB y dobles notificaciones |
+| Sin ventana de tiempo en deduplicación | 5 | Clientes legítimos bloqueados permanentemente |
 | Nodo descarte sin enriquecer | 5 | Sin trazabilidad de razón y nivel en descartados |
 | Sin retención automática | 5 | Acumulación de PII — riesgo GDPR |
 | Sin logs de N8N con límite | 6 | PII acumulada en logs indefinidamente |
@@ -427,11 +485,27 @@ Abstract analiza propiedades del email y las devuelve. El sistema
 decide qué hacer con esas propiedades. Si Abstract se reemplaza 
 por otra API, la lógica de negocio no cambia — solo el nodo HTTP.
 
-**ON CONFLICT DO NOTHING — operación atómica:**
-Previene race conditions ante inserts simultáneos. La operación 
-ocurre en un solo viaje a PostgreSQL sin ventana de concurrencia.
-No genera error 23505 — devuelve rowCount = 0 como señal de negocio.
-Esto convierte una excepción técnica en un dato puro y limpio.
+**CTE atómica para la persistencia inicial:**
+El ON CONFLICT DO NOTHING resuelve race conditions ante inserts
+simultáneos. Implementado como CTE que siempre devuelve 1 fila —
+`es_nuevo=TRUE` si el INSERT tuvo éxito, `es_nuevo=FALSE` si hubo
+conflicto. N8N nunca recibe 0 items, nunca detiene el flujo
+silenciosamente. Convierte una excepción técnica en un dato limpio.
+
+**Ventana de tiempo de 24 horas para deduplicación:**
+El doble click y el cliente que vuelve un mes después son casos
+de negocio distintos aunque lleguen por el mismo canal técnico.
+El UNIQUE CONSTRAINT resuelve la concurrencia instantánea.
+La ventana de 24 horas resuelve el caso de negocio real.
+Sin esta distinción, el sistema bloquea silenciosamente a clientes
+legítimos sin que Pablo lo sepa ni el cliente reciba respuesta.
+Identificado por Pablo — las tres IAs de la triangulación lo habían pasado por alto.
+
+**Todo segundo intento queda registrado:**
+Incluso los duplicados generan un evento `duplicado_detectado` en la
+tabla eventos. El sistema nunca descarta silenciosamente. El campo
+`horas_desde_creacion` en el JSONB permite distinguir en retrospectiva
+un doble click accidental de un intento de recontacto legítimo.
 
 **Guardado antes de procesar:**
 La tabla leads recibe el registro con estado `pendiente` antes de 
@@ -443,12 +517,6 @@ Un email que Abstract no puede verificar merece revisión humana.
 Automatizar sin confianza suficiente genera falsos positivos que 
 dañan la relación con el cliente.
 
-**Política de deduplicación — primer mensaje gana:**
-Para el MVP, el primer envío con email+servicio es el válido.
-Envíos posteriores con el mismo par se bloquean silenciosamente.
-Decisión consciente de simplicidad — el versionado se evalúa 
-cuando haya evidencia de que el mercado lo necesita.
-
 **Firestore como receptor, PostgreSQL como memoria:**
 Firestore recibe el lead desde el formulario — primera red de seguridad.
 PostgreSQL es la memoria del sistema — historial, deduplicación, 
@@ -459,13 +527,19 @@ Se descartan campos PII que Abstract devuelve (`first_name`,
 `last_name`) porque no tienen propósito en el flujo de clasificación.
 Solo se conservan propiedades técnicas del email.
 
+**La triangulación es fuerte en técnico, débil en negocio:**
+Las IAs convergen rápido en soluciones técnicas correctas.
+Las preguntas de negocio — cómo se comportan clientes reales —
+tienen que venir del arquitecto. La experiencia de mercado
+no se puede triangular entre modelos de lenguaje.
+
 ---
 
 ## DOCUMENTOS RELACIONADOS
 
 | Documento | Contenido |
 |-----------|-----------|
-| `schema-postgresql-draft.md` | Tablas, columnas, tipos de dato, PII, retención |
+| `schema-postgresql-draft.md` | Tablas, columnas, tipos de dato, PII, retención, query CTE |
 | `gdpr-data-mapping.md` | Inventario completo de PII del sistema |
 | `adr/ADR-201.md` | Decisión Firebase → N8N trigger |
 | `adr/ADR-004.md` | Checklist de 6 capas arquitectónicas |
@@ -475,6 +549,7 @@ Solo se conservan propiedades técnicas del email.
 ---
 
 **Documento creado**: 25 de marzo 2026  
+**Última revisión**: 27 de marzo 2026  
 **Autor**: Pablo Cuevas  
 **Validado con**: Claude (Anthropic) + Gemini + DeepSeek — triangulación completa  
 **Próxima revisión**: Al completar Bloque 5 (PostgreSQL implementado)

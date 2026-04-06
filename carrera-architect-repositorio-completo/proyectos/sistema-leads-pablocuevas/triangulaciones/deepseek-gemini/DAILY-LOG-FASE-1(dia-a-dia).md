@@ -850,10 +850,193 @@ Tres mensajes Telegram diferenciados:
 **Nodo más crítico del sistema:** `procesador-body` — punto de entrada único de datos reales. Abstract puede fallar y hay fallback. `procesador-body` no tiene fallback — un error ahí viaja silenciosamente por todo el flujo.
 
 ---
+## 24/03 - 25/03 ✅ PA1 — Sesiones 1 y 2 + Triangulación completa
 
-**Estado del Bloque 4:** ✅ Completado — 3 sesiones reales (estimado: 4)
+---
 
-**Siguiente:** Bloque 5 — Persistencia con PostgreSQL
+### Sesión 1 — Schema PostgreSQL (diseño conceptual)
+
+Primera vez trabajando con conceptos de bases de datos relacionales
+construidos desde el sistema propio, no desde un tutorial abstracto.
+
+**Conceptos internalizados:**
+- Tabla = hoja de cálculo que no se rompe con escala
+- Columna = encabezado con tipo de dato fijo
+- Fila = un registro concreto
+- Dos tablas porque un lead tiene datos fijos (tabla leads) y una
+  línea de tiempo de eventos (tabla eventos) — relación uno a muchos
+- PII pseudoanonimizado: los campos de eventos no son PII solos,
+  pero vinculados a un lead identificable se tratan igual
+
+**Decisiones tomadas:**
+- Deduplicación por `email + servizio` — misma persona puede pedir
+  dos servicios distintos, eso no es duplicado
+- Política de retención: descartados 60d / revisión 6m / procesados 12m
+  — cada período tiene justificación de negocio documentada
+
+---
+
+### Sesión 2 — Diagrama de sistema v1.0
+
+Creado `diagrama-sistema.md` con los 4 bloques del sistema completo:
+entrada, procesamiento, salida y reporte semanal.
+
+**Decisiones clave:**
+- Guardado en PostgreSQL ANTES de cualquier procesamiento — si todo
+  falla después, el lead ya está registrado
+- Reporte semanal: Schedule lunes 8am → query PostgreSQL → Telegram
+- Deuda técnica del nodo de descarte identificada y documentada
+
+---
+
+### Triangulación — primera triangulación formal del proyecto
+
+Generado `briefing-triangulacion.md` y compartido con Gemini y DeepSeek.
+
+**Rol de cada IA en la triangulación:**
+- Claude: estructurar, documentar, coherencia de diseño a largo plazo
+- Gemini: cuestionar trade-offs, resiliencia, valor de negocio
+- DeepSeek: análisis técnico crudo, síntesis entre posturas
+
+El patrón correcto: diseñar con criterio propio → triangular para
+detectar puntos ciegos → sintetizar lo mejor de cada perspectiva.
+
+---
+
+### Diagrama v2.0 → v3.0 — evolución tras triangulación
+
+Gemini y DeepSeek identificaron que el diagrama v1.0 era un
+"Happy Path" — buen diseño de negocio pero sin caminos de error.
+
+**Race Condition identificada por Gemini:**
+Doble click → dos inserts simultáneos → ambos pasan deduplicación
+porque PostgreSQL aún no tiene el registro. Solución: UNIQUE
+CONSTRAINT sobre (email, servizio) — el guardián vive en la DB,
+no en N8N.
+
+**Debate sobre deduplicación:**
+- Claude propuso: SELECT → IF en N8N → INSERT/UPDATE (Read-Modify-Write)
+- Gemini detectó: ese patrón reintroduce la race condition
+- DeepSeek sintetizó: ON CONFLICT DO NOTHING — atómico, sin error
+  23505, rowCount como señal de negocio
+
+**Decisión final:** ON CONFLICT DO NOTHING.
+rowCount = 1 → lead nuevo. rowCount = 0 → duplicado, registrar y parar.
+
+**Aprendizaje de arquitecto:** Claude tuvo la pregunta de negocio
+correcta pero el patrón técnico frágil. Gemini tuvo la solución
+técnica correcta. DeepSeek sintetizó ambos. Sin triangulación,
+habría quedado un sistema con race condition documentada.
+
+**Diagrama v3.0 — 6 capas con responsabilidad única:**
+
+1. **Seguridad** — firma HMAC, rechaza requests inválidos
+2. **Persistencia inicial** — UPSERT atómico, deduplicación, estado pendiente
+3. **Procesamiento** — Abstract + clasificación Nivel 1 / Nivel 2
+4. **Notificación** — Telegram, extensible a email automático al lead
+5. **Registro de eventos** — trazabilidad completa con JSONB
+6. **Mantenimiento** — reporte semanal, retención GDPR, health check, backup
+
+**Principio rector:** "Un lead que falla en cualquier capa queda
+registrado. Nunca se pierde en el vacío."
+
+---
+
+### Schema v2.0 — rediseño tras triangulación
+
+**Problema identificado en schema v1.0:**
+La tabla eventos tenía columnas fijas (`abstract_status`,
+`abstract_smtp_valid`) — vendor lock-in real. Si Abstract cambia,
+migración de DB obligatoria.
+
+**Solución — JSONB:**
+Tabla eventos rediseñada con 5 columnas fijas:
+`id, lead_id, tipo_evento, timestamp_evento, detalle (JSONB)`
+
+El campo `detalle` guarda los datos variables de cada evento como
+objeto JSON. Si Abstract se reemplaza, el JSON cambia pero el
+schema no. Cero migración de base de datos.
+
+**GDPR v2.0 actualizado:**
+- PostgreSQL como fuente de verdad operativa (no Firebase)
+- Firebase como receptor inicial — primera red de seguridad
+- Logs de N8N con retención máxima 30 días
+- Todas las deudas con bloque de resolución asignado
+
+---
+
+### Decisión de negocio — ventana de tiempo en deduplicación
+
+**Gap identificado por Pablo — las tres IAs lo habían pasado por alto:**
+
+Con el diseño anterior — UNIQUE CONSTRAINT permanente — el cliente
+que vuelve un mes después con el mismo email y servicio queda
+bloqueado silenciosamente. Pablo no lo ve en Telegram, el cliente
+no recibe respuesta. Se pierde un lead real.
+
+**Solución — ventana de tiempo de 24 horas:**
+```
+rowCount = 0 → consulta timestamp_creacion
+    → < 24h → duplicado real (doble click) → registrar y parar
+    → > 24h → cliente legítimo que vuelve → actualizar y procesar
+```
+
+24 horas cubre el doble click y reenvíos accidentales del mismo día.
+Cualquier contacto posterior se trata como lead nuevo legítimo.
+
+**Nuevo tipo de evento:** `lead_reactivado` — cuando un cliente
+vuelve después de 24 horas con el mismo email y servicio.
+
+**Nuevo mensaje Telegram:** notificación específica para leads
+reactivados con referencia al primer contacto original.
+
+**Diagrama v4.0** actualizado con esta decisión.
+
+---
+
+### Aprendizaje sistémico — límites de la triangulación
+
+**La triangulación es fuerte en técnico, débil en negocio.**
+
+Las IAs convergemos rápido en soluciones técnicas correctas —
+race conditions, vendor lock-in, JSONB, GDPR. Tenemos formación
+técnica sólida y los patrones son conocidos.
+
+Somos malos para detectar gaps de negocio porque no tenemos
+clientes reales. La pregunta "¿qué pasa con el cliente que vuelve
+un mes después?" no viene de conocimiento técnico — viene de
+pensar en el cliente real.
+
+**Patrón documentado:**
+- Triangulación → efectiva para: arquitectura técnica, compliance,
+  patrones de base de datos, seguridad
+- Triangulación → débil para: comportamiento real de clientes,
+  casos de uso que solo aparecen con experiencia de mercado
+
+**Las preguntas de negocio tienen que venir del arquitecto.**
+Las IAs no las van a encontrar solas.
+
+---
+
+### Decisiones pendientes de formalizar
+
+- **ADR-104**: método de triangulación con múltiples IAs como
+  proceso estándar de validación de diseño
+- **Template de diagrama**: base reutilizable para futuros proyectos
+- **6 documentos por proyecto**: ADR + diagrama + audit + checklist
+  + README + runbook — estándar de entrega profesional
+
+---
+
+**Estado al cierre:**
+- `diagrama-sistema-v4.md` ✅
+- `schema-postgresql-draft.md` v2.0 + `lead_reactivado` ✅
+- `gdpr-data-mapping.md` v2.0 ✅
+- `briefing-triangulacion.md` ✅
+- Push a GitHub ✅
+
+**Siguiente sesión:** PA1 Sesión 3 — construcción real en N8N.
+El diseño está validado. No hay más diseño previo pendiente.
 
 *Documento: DAILY-LOG-FASE-1.md*  
 *Fase activa: Fase 1 — Constructor de Sistemas de Automatización*  
