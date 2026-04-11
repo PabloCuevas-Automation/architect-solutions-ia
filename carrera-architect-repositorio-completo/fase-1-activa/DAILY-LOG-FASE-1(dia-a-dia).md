@@ -1121,8 +1121,76 @@ Crear las tablas `leads` y `eventos` en pgAdmin con el schema v2.2
 y el UNIQUE CONSTRAINT sobre `(email, servizio)`.
 Sin las tablas físicas, el primer nodo PostgreSQL en N8N falla.
 
-**Siguiente sesión:** PA1 Sesión 3 — construcción real en N8N.
-Orden: pgAdmin (crear tablas) → N8N (Capa 1 TODO placeholder + Capa 2 CTE).
+## 10/04 ✅ GeoLabor — Reconocimiento en laboratorio + diseño del piloto
+
+Sesión diferente: no fue PA1 ni bloques del roadmap. Fue reconocimiento de campo en el laboratorio donde trabajo como operario. Resultado: un proyecto piloto diseñado con scope cerrado, entorno técnico mapeado y archivos reales obtenidos.
+
+---
+
+### Oportunidad identificada
+
+GeoLabor s.a.s. (Rovereto/Mori) — laboratorio geotécnico con muchos años en la zona. Prácticamente todas las pruebas siguen el patrón papel → transcripción manual → Excel. El jefe directo aceptó un piloto gratuito para granulometría.
+
+**Automatización propuesta:** escaneo de minuta di prova (hoja manuscrita con pesos por tamiz) → OCR con IA (API de visión) → Excel completo generado automáticamente con curva granulométrica + gráfico triangular DIN 18123.
+
+**Valor cuantificable:** ~10-15 min ahorrados por prueba × 60 pruebas/mes = 10-15 horas/mes de transcripción manual eliminada.
+
+---
+
+### Reconocimiento técnico en el laboratorio
+
+**Entorno mapeado:**
+- Windows 11, PCs conectadas entre sí via servidor NAS
+- Escáner conectado a PC, output va a Server (Y:) — formato cambiado de PDF a JPEG
+- Internet disponible (lento pero funcional)
+- Permisos para crear carpetas: sí
+- Estructura de archivos organizada: Server → GEOLABOR-LAVORO → TUTTO 2026 → PROVE 2026 → [cliente] → V.A. {N}-26 → pruebas
+
+**Archivos obtenidos:**
+- Plantilla Excel italiana (UNI CEN ISO/TS 17892-4) — estructura analizada en detalle: Foglio2 filas 26-44, columna D para pesos, fórmulas calculan % trattenuto y % passante automáticamente
+- Plantilla Excel alemana (.xls)
+- Fotos de minutas di prova reales (2 muestras y 8+ muestras)
+- Foto del output de KORN.LAB (programa alemán que genera gráfico triangular)
+- Foto del Foglio1 en pantalla (curva granulométrica)
+- Pendientes de subir: 4 Excel completados UNI 933-1 + 1 Excel UNI CEN ISO/TS + 1 granulometría completa
+
+---
+
+### Decisiones de diseño tomadas
+
+**Flujo:** escaneo JPEG → web app (subir archivo) → N8N webhook → API visión (Claude Anthropic) → pantalla de confirmación → genera Excel → descarga.
+
+**Datos personales del cliente fuera del sistema.** La IA extrae solo valores numéricos y metadatos técnicos. Committente, località, progetto los rellena el técnico después en el Excel descargado.
+
+**Excel con todos los fogli siempre presentes.** Los que no tienen datos quedan vacíos. Sin lógica de Switch para decidir qué fogli crear — formato predecible y consistente.
+
+**Mejora sobre proceso actual:** cálculo automático de D10, D30, D60 por interpolación matemática, eliminando la lectura manual del gráfico. Cu y Cc se derivan automáticamente.
+
+**Gráfico triangular como Foglio3.** Prueba de concepto funcional generada — clasificación DIN 18123, validada contra output de KORN.LAB (ghiaia 71.87%, sabbia 28.11%, fines 0.02% = Gr/GW). Coincide.
+
+**Scope cerrado por escrito:** granulometría + triángulo simplificado = piloto gratuito. Sistema completo (Atterberg, KORN.LAB completo, otras pruebas) = proyecto de pago.
+
+---
+
+### Relación con PA1
+
+PA1 sigue siendo prioridad. GeoLabor necesita exactamente la infraestructura que PA1 construye: VPS, Docker Compose, HTTPS, N8N en producción. Sin PA1 completado, no hay dónde correr GeoLabor. Orden: terminar PA1 → Bloques 5-6 → montar GeoLabor encima.
+
+**Documento generado:** `geolabor-piloto-scope.md` v1.0 — resumen completo del proyecto para triangulación con Gemini y DeepSeek.
+
+---
+
+### Oportunidad de mercado confirmada
+
+Excel automation es un hueco enorme en Rovereto. GeoLabor es el caso de estudio para posicionar ese servicio. La marca tiene peso en la zona — otros laboratorios y empresas locales pueden ser clientes del mismo tipo de automatización.
+
+---
+
+### Próximos pasos
+
+1. Subir los Excel completados para análisis de estructura y validación
+2. Triangular el diseño del piloto con Gemini y DeepSeek
+3. **Retomar PA1 Sesión 3** — construcción real en N8N (pgAdmin → crear tablas → N8N Capa 1 + Capa 2)
 
 *Documento: DAILY-LOG-FASE-1.md*  
 *Fase activa: Fase 1 — Constructor de Sistemas de Automatización*  
