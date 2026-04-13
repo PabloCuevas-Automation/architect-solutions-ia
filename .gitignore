@@ -1,0 +1,9 @@
+# Secretos — nunca a GitHub
+.env
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+
+# Editores
+.vscode/
