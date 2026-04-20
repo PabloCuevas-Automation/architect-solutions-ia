@@ -22,5 +22,18 @@ services:
     depends_on:
       - postgres
 
+  n8n:
+    image: n8nio/n8n
+    container_name: n8n_local
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+    volumes:
+      - n8n_data:/home/node/.n8n
+    depends_on:
+      - postgres
+
 volumes:
   postgres_data:
+  n8n_data:

@@ -1,2 +1,4 @@
-docker run -it --rm --name n8n -p 5678:5678 -v n8n_data:/home/node/.n8n n8nio/n8n
+cd C:\Users\pablo\Desktop\architect-solutions\carrera-architect-repositorio-completo\proyectos\sistema-leads-pablocuevas\docker
+
+docker compose up -d
 
