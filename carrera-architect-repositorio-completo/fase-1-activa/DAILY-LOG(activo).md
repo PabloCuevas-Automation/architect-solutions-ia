@@ -265,10 +265,99 @@ en el proyecto.
 - `ADR-303-validacion-ocr-dos-capas.md` — individual, entregable.
 - `geolabor-problema-9-arc42-c4.md` — entrada para insertar en Parte 3 del master context.
 
-### Pendiente para próxima sesión
+## 20/04 ✅ PA1 Sesión 4 — N8N integrado en Docker Compose + conexión a PostgreSQL
 
-**PA1 Sesión 4** (prioridad): conectar N8N al nodo PostgreSQL con credenciales
-del vault, construir Capa 1 (placeholder HMAC) y Capa 2 (UPSERT con CTE atómica).
+### Qué hice
+- Migré N8N de docker run suelto a docker-compose junto con PostgreSQL y pgAdmin
+- Resolví conflicto de encryption key entre volumen antiguo y variable nueva del .env
+- Extraje la encryption key original del volumen n8n_data y la moví al .env
+- Añadí n8n_data como volumen external: true en el compose para preservar workflows
+- Conecté N8N a PostgreSQL desde el vault de credenciales — test exitoso
+- Actualicé docker/README.md con comandos operativos del stack
+- Actualicé .env.example con la variable N8N_ENCRYPTION_KEY
+
+### Qué entendí
+- Contenedores en docker run separado viven en redes aisladas — no se ven entre sí
+- El nombre del servicio en el compose (postgres) es el host interno — la conexión
+  nunca sale de la red privada de Docker
+- La encryption key separada de los datos es el patrón correcto — key y datos
+  juntos en el volumen es deuda técnica de seguridad
+- SSL desactivado es correcto en local porque ambos servicios están en la misma
+  red privada Docker — no hay tráfico externo que interceptar
+- docker compose up -d es el único comando necesario para levantar todo el stack
+  desde ahora — docker run ya no se usa
+
+### Deuda técnica documentada
+- Usuario PostgreSQL con mínimos privilegios pendiente — Bloque 7
+- SSL entre N8N y PostgreSQL no aplica en local, revisar en producción — Bloque 6
+- Encryption key vive en .env local — nunca en el repositorio, nunca en producción
+  sin gestión explícita
+
+### Comandos operativos del stack
+- Levantar: docker compose up -d (desde carpeta docker/)
+- Parar: docker compose down
+- Ver estado: docker ps
+
+### Pendiente al cierre
+PA1 Sesión 5 — construir Capa 1 (placeholder HMAC) y Capa 2 
+(CTE atómica + lógica de deduplicación) en el workflow
+
+---
+
+## 21/04 ✅ PA1 Sesión 5 — Capa 1 y Capa 2 construidas y validadas
+
+### Qué hice
+- Añadí capa1-validacion-hmac entre Webhook1 y procesador-body1
+  (placeholder HMAC — TODO Bloque 7)
+- Construí capa2-persistencia-upsert con CTE atómica en nodo Postgres
+  usando Execute Query con los 7 parámetros del formulario
+- Añadí capa2-merge-datos para fusionar resultado de PostgreSQL con
+  datos originales del webhook (accesibles via $('capa1-validacion-hmac'))
+- Añadí capa2-if-es-nuevo para rutear lead nuevo (true) vs duplicado (false)
+- Añadí capa2-logica-duplicado para calcular horas desde timestamp_creacion
+  y clasificar duplicado_real vs lead_reactivado
+- Añadí capa2-if-reactivado para rutear hacia procesador-body1 si es
+  lead_reactivado, o detener si es duplicado_real
+- Registré pgAdmin conectado a leads_db y validé los datos con SELECT * FROM leads
+
+### Qué entendí
+- Los datos del webhook llegan bajo $json.body — no directamente en $json.
+  El procesador-body1 los aplana, pero la Capa 2 está antes de ese nodo
+  y necesita acceder via $json.body
+- La CTE devuelve solo 3 campos (id, timestamp_creacion, es_nuevo) —
+  capa2-merge-datos es necesario para que el resto del workflow tenga
+  todos los datos disponibles
+- new Date(string) es obligatorio para operar con timestamps de PostgreSQL —
+  sin la conversión la resta devuelve NaN y la lógica de 24h nunca funciona
+- El Stop and Error requiere configuración mínima — sin ella bloquea el workflow
+
+### Validaciones superadas
+- Lead nuevo: insertado en PostgreSQL con status pendiente ✅
+- Duplicado real (< 24h): detectado, flujo detenido, sin llamar a Abstract
+  ni enviar Telegram ✅
+- horas_desde_creacion: 0.58 — duplicado real correctamente clasificado ✅
+- pgAdmin confirma registro en tabla leads con todos los campos correctos ✅
+- accion, razon, prioridad, nivel_resolucion en null — correcto,
+  los llenará la Capa 3 ✅
+
+### Flujo actual del workflow
+Webhook1
+  → capa1-validacion-hmac (placeholder HMAC)
+  → capa2-persistencia-upsert (CTE atómica → PostgreSQL)
+  → capa2-merge-datos (fusiona datos webhook + resultado PostgreSQL)
+  → capa2-if-es-nuevo
+      → true  → procesador-body1 → HTTP Abstract → enriquecedor-clasificador
+               → IF → Switch → Telegram
+      → false → capa2-logica-duplicado (calcula horas)
+              → capa2-if-reactivado
+                  → true  → procesador-body1 (mismo flujo que lead nuevo)
+                  → false → flujo termina (duplicado_real ignorado)
+
+### Pendiente para próxima sesión
+PA1 Sesión 6 — registrar eventos en tabla eventos:
+- evento lead_recibido cuando es_nuevo = true
+- evento duplicado_detectado cuando tipo_duplicado = duplicado_real
+- evento lead_reactivado cuando tipo_duplicado = lead_reactivado
 
 **GeoLabor — antes de construir**:
 - Email de scope al contacto de GeoLabor documentando por escrito qué incluye
