@@ -353,11 +353,145 @@ Webhook1
                   → true  → procesador-body1 (mismo flujo que lead nuevo)
                   → false → flujo termina (duplicado_real ignorado)
 
+## 25/04 ✅ PA1 Sesión 6 — Registro de eventos + fix crítico PostgreSQL + ADRs serie 200
+
+### Qué hice
+
+- Levanté el stack Docker (PostgreSQL + pgAdmin + N8N) con `docker compose up -d`
+- Construí los tres nodos de registro de eventos en tabla `eventos`:
+  `capa2-registrar-lead-recibido`, `capa2-registrar-duplicado`,
+  `capa2-registrar-lead-reactivado`
+- Identifiqué y resolví el bug crítico del campo Query Parameters de N8N
+  (múltiples iteraciones de debugging con triangulación Claude + DeepSeek)
+- Corregí el mismo bug en `capa2-persistencia-upsert` — el `messaggio` con
+  coma rompía el array de parámetros silenciosamente en producción
+- Añadí dos Code nodes de restauración de datos después de los nodos
+  PostgreSQL para preservar el item completo en el flujo:
+  `capa2-restaurar-datos-recibido` y `capa2-restaurar-datos-reactivado`
+- Actualicé `capa2-logica-duplicado` para calcular `dias_desde_creacion`
+  directamente en la rama `lead_reactivado`, sin nodos intermedios
+- Validé los tres casos con Thunder Client + pgAdmin con JOIN entre
+  `eventos` y `leads`: `lead_recibido`, `duplicado_detectado`,
+  `lead_reactivado` — todos correctos y con datos coherentes
+- Limpié las tablas de prueba y verifiqué contadores en 0
+- Creé los ADRs de la serie 200 (ADR-200 a ADR-205) — individuales
+  y consolidado
+
+### Qué entendí
+
+**Hallazgo crítico — Query Parameters en N8N rompe con valores complejos:**
+El campo Query Parameters parsea el array como texto antes de enviarlo a
+PostgreSQL. Cualquier coma, comilla o carácter especial dentro de un valor
+rompe ese parsing — los parámetros `$1, $2, $3...` no se mapean
+correctamente y PostgreSQL recibe menos parámetros de los esperados.
+
+La raíz del problema: en modo `fx`, N8N envía el array entero como un
+solo parámetro `$1`. En modo normal, las comillas anidadas dentro de
+strings JSON o los timestamps sin comillas descomponen el array.
+
+La solución definitiva: expresiones `{{ $json.campo }}` directamente en
+el SQL con Query Parameters vacío. N8N evalúa las expresiones primero y
+construye el SQL completo antes de enviarlo. PostgreSQL recibe SQL ya
+formado — sin arrays intermedios, sin parsing ambiguo.
+
+**Regla operativa permanente:**
+> En nodos PostgreSQL de N8N: expresiones `{{ $json.campo }}` directamente
+> en el SQL. Query Parameters siempre vacío. Sin excepciones.
+
+**Por qué los Code nodes de restauración son necesarios:**
+Los nodos PostgreSQL con INSERT sin RETURNING devuelven `{"success": true}`
+y reemplazan el item del flujo. Todo lo que viene después recibe solo ese
+objeto — Abstract, Telegram, y el resto del sistema quedan sin datos.
+La solución: `$('nombre-nodo').first()` recupera el item de cualquier
+nodo anterior en el contexto de ejecución, aunque el nodo actual haya
+devuelto otro valor.
+
+**Por qué `capa2-restaurar-datos-recibido` referencia `capa2-merge-datos`:**
+Es el último nodo antes de la bifurcación con todos los campos fusionados
+del lead más los resultados de PostgreSQL (`id`, `es_nuevo`,
+`timestamp_creacion`).
+
+**Por qué `capa2-restaurar-datos-reactivado` referencia
+`capa2-logica-duplicado`:**
+Es el último nodo de la rama de duplicados con los campos calculados
+`horas_desde_creacion` y `dias_desde_creacion` que no existen en
+`capa2-merge-datos`.
+
+**La triangulación funcionó correctamente:**
+DeepSeek fue más preciso en el análisis del síntoma concreto (mensaje
+de error + screenshot). Claude identificó la causa raíz estructural.
+La síntesis de ambos llegó a la solución correcta más rápido que
+cualquiera de los dos por separado.
+
+### Decisiones tomadas
+
+- **Regla operativa ADR-202**: Query Parameters vacío en todos los nodos
+  PostgreSQL de N8N — expresiones inline en el SQL
+- **`json_build_object` en el SQL** para construir JSONB dentro de
+  PostgreSQL en lugar de serializar JSON desde N8N
+- **Detalle de `duplicado_detectado` simplificado** a solo
+  `horas_desde_creacion` — `email` y `servizio` ya están en `leads`
+  y se recuperan con JOIN. El dato de valor único es el tiempo
+  transcurrido que distingue doble click de intento de recontacto
+- **`dias_desde_creacion` calculado solo en rama `lead_reactivado`**
+  de `capa2-logica-duplicado` — no tiene sentido en `duplicado_real`
+- **Serie 200 de ADRs creada**: ADR-200 a ADR-205, todas audiencia
+  personal, consolidadas en `ADR-CONSOLIDADAS-PA1_25-04-2026.md`
+
+### Flujo actual del workflow (estado al cierre)
+
+```
+Webhook1
+  → capa1-validacion-hmac (placeholder HMAC — Bloque 7)
+  → capa2-persistencia-upsert (CTE atómica → PostgreSQL, expresiones inline)
+  → capa2-merge-datos (fusiona datos webhook + resultado PostgreSQL)
+  → capa2-if-es-nuevo
+      → true  → capa2-registrar-lead-recibido (PostgreSQL)
+                → capa2-restaurar-datos-recibido ($('capa2-merge-datos').first())
+                → procesador-body1
+                → HTTP Abstract
+                → enriquecedor-clasificador
+                → IF → Switch → Telegram
+      → false → capa2-logica-duplicado (calcula horas + dias_desde_creacion)
+              → capa2-if-reactivado
+                  → true  → capa2-registrar-lead-reactivado (PostgreSQL)
+                             → capa2-restaurar-datos-reactivado
+                               ($('capa2-logica-duplicado').first())
+                             → procesador-body1 (mismo flujo que lead nuevo)
+                  → false → capa2-registrar-duplicado (PostgreSQL) → fin
+```
+
+### Archivos creados hoy
+
+- `ADR-201-cte-atomica-deduplicacion.md`
+- `ADR-202-patron-queries-postgresql-n8n.md`
+- `ADR-203-jsonb-campo-detalle.md`
+- `ADR-204-write-before-processing.md`
+- `ADR-205-nivel2-no-procesa.md`
+- `ADR-CONSOLIDADAS-PA1_25-04-2026.md` — consolidado serie 200
+- `entrada-daily-log-25-04-2026.md` — esta entrada
+
+### Deuda técnica documentada
+
+- **ADR-202**: advertencia de SQL injection en N8N al usar expresiones
+  inline — evaluar sanitización explícita en Bloque 7
+- **ADR-200**: URL ngrok temporal en formulario — reemplazar por URL
+  VPS en Bloque 6
+- **Diagrama sistema v4.2**: actualizar para reflejar los tres nodos
+  de eventos y los dos Code nodes de restauración en Capa 2
+- **ADR-CONSOLIDADAS-pablo-cuevas**: actualizar para referenciar que
+  la serie 200 existe en su propio archivo consolidado
+
 ### Pendiente para próxima sesión
-PA1 Sesión 6 — registrar eventos en tabla eventos:
-- evento lead_recibido cuando es_nuevo = true
-- evento duplicado_detectado cuando tipo_duplicado = duplicado_real
-- evento lead_reactivado cuando tipo_duplicado = lead_reactivado
+
+**PA1 Sesión 7 — Capa 3 eventos:**
+Registrar `abstract_consultado`, `abstract_error` y
+`clasificacion_realizada` en la tabla `eventos` aplicando el patrón
+ADR-202 desde el inicio — sin iteraciones de debugging.
+
+Antes de empezar: verificar que no queden nodos PostgreSQL en el
+workflow con Query Parameters activo : REVISADO Y NO HAY QUERY PARAMETERS EN LOS NODOS POSTGRESQL
+
 
 **GeoLabor — antes de construir**:
 - Email de scope al contacto de GeoLabor documentando por escrito qué incluye
