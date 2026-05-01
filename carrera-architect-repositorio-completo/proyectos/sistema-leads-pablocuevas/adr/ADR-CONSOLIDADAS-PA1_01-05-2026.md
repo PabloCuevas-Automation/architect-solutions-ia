@@ -1,10 +1,11 @@
 # DECISIONES ARQUITECTÓNICAS — PROYECTO PA1
 ## sistema-leads-pablocuevas.it
 
-**Versión**: 1.0  
-**Fecha**: 25 de abril 2026  
+**Versión**: 1.1  
+**Fecha**: 01 de mayo 2026  
 **Estado**: ✅ Activo — documento único de referencia del proyecto  
 **Consolidó**: ADR-200 a ADR-205  
+**Supersede**: ADR-CONSOLIDADAS-PA1_25-04-2026.md v1.0  
 **Audiencia**: Todas personales — ver campo de audiencia en cada ADR  
 **Formato**: Searchable, cross-referenced, no redundancias
 
@@ -260,6 +261,7 @@ campo Query Parameters está roto en la práctica para valores complejos.
 # ADR-203: JSONB en Campo `detalle` de Tabla Eventos
 
 **Fecha**: 25 de abril 2026  
+**Última revisión**: 01 de mayo 2026  
 **Estado**: ✅ Aceptada  
 **Tipo**: Táctica — decisión de schema  
 **Audiencia**: 🔒 Personal
@@ -284,15 +286,16 @@ Consultable con operadores JSONB de PostgreSQL.
 
 **Campo `detalle` de tipo JSONB en la tabla `eventos`.**
 
-| Evento | Campos en `detalle` |
-|--------|---------------------|
-| `lead_recibido` | `origen`, `es_nuevo` |
-| `duplicado_detectado` | `horas_desde_creacion` |
-| `lead_reactivado` | `timestamp_original`, `dias_desde_creacion` |
-| `abstract_consultado` | `status`, `smtp_valid`, `live_site`, `es_libre`, `es_desechable`, `nivel_riesgo` |
-| `abstract_error` | `codigo_error`, `mensaje`, `accion_tomada` |
-| `clasificacion_realizada` | `nivel`, `accion`, `razon` |
-| `notificacion_enviada` | `canal`, `tipo` |
+| Evento | Campos en `detalle` | Estado |
+|--------|---------------------|--------|
+| `lead_recibido` | `origen`, `es_nuevo` | ✅ Implementado S6 |
+| `duplicado_detectado` | `horas_desde_creacion` | ✅ Implementado S6 |
+| `lead_reactivado` | `timestamp_original`, `dias_desde_creacion` | ✅ Implementado S6 |
+| `abstract_consultado` | `deliverability_status`, `quality_score`, `is_live_site`, `address_risk` | ✅ Implementado S7 |
+| `abstract_error` | `error_message` | ✅ Implementado S7 |
+| `clasificacion_realizada` | `accion_recomendada`, `razon`, `prioridad`, `nivel_riesgo` | ✅ Implementado S7 |
+| `notificacion_enviada` | `canal`, `tipo` | ⏳ Pendiente Bloque 5 |
+| `lead_descartado` | `razon`, `accion_recomendada` | ⏳ Pendiente Bloque 5 |
 
 ### Consecuencias
 
@@ -301,6 +304,12 @@ exactamente los datos relevantes.
 
 **⚠️ Negativas**: Sin validación de schema a nivel de base de datos para
 el contenido del JSONB.
+
+**Enmienda 01/05/2026** — Campos de Capa 3 actualizados para reflejar
+implementación real (Sesión 7). Minimización GDPR aplicada: de ~30 campos
+disponibles en Abstract se guardan únicamente los 4 con propósito operativo
+demostrable. Campo `abstract_error` simplificado a `error_message` — cuando
+la API falla por completo, es el único dato disponible.
 
 **Creado**: 25 de abril 2026
 
@@ -416,14 +425,14 @@ Para entender los límites de la clasificación automática: ADR-205.
 | ADR-005 | 5-Layer Workflow Audit — obligatorio antes de dar el workflow por completo |
 | ADR-006 | Credenciales en .env — implementado desde Sesión 3 |
 
-### Estado operativo (25 de abril 2026)
+### Estado operativo (01 de mayo 2026)
 
 | ADR | Estado | Implementado | Pendiente |
 |-----|--------|-------------|-----------|
 | ADR-200 | ✅ | Trigger activo | URL ngrok → URL VPS en Bloque 6 |
 | ADR-201 | ✅ | Capa 2 completa | Validar con datos reales en producción |
-| ADR-202 | ✅ | Todos los nodos PostgreSQL actualizados | Verificar en nodos de Capa 3-5 |
-| ADR-203 | ✅ | Schema implementado | Añadir tipos de evento de Capa 3-5 |
+| ADR-202 | ✅ | Todos los nodos PostgreSQL actualizados | Verificar en nodos futuros Bloque 5 |
+| ADR-203 | ✅ | Schema implementado — Capa 3 enmendada S7 | Añadir eventos Bloque 5 cuando se implementen |
 | ADR-204 | ✅ | INSERT antes de Abstract | — |
 | ADR-205 | ✅ | Nivel 2 sin rama procesar | — |
 
@@ -438,5 +447,6 @@ Para entender los límites de la clasificación automática: ADR-205.
 
 **Documento consolidado por**: Pablo Cuevas + Claude (Anthropic)  
 **Fecha consolidación**: 25 de abril 2026  
-**Próxima revisión**: Al completar Capa 3 o al iniciar Bloque 6  
+**Última revisión**: 01 de mayo 2026  
+**Próxima revisión**: Al completar Bloque 5 (eventos notificacion y lead_descartado)  
 **No mezclar con**: ADR consolidadas serie 000-100 ni con decisiones de GeoLabor (serie 300)

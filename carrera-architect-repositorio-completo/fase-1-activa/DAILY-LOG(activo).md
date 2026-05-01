@@ -502,9 +502,11 @@ Webhook1
   separada de la salida `Success`
 - Validé los tres eventos en pgAdmin con JOIN `eventos` + `leads` —
   todos correctos y con JSONB coherente
-- Exporté el workflow completo como JSON a
-  `sistema-leads-pablocuevas/workflow/pa1-leads-workflow.json`
-  — primera vez que el workflow queda versionado en el repo
+- Actualicé diagrama sistema a v4.3 — sincronizado con la realidad
+  construida: flujo real con nombres de nodos exactos, JSONB de eventos
+  corregidos, UPDATE de reactivación marcado como deuda técnica explícita
+- Actualicé ADR-CONSOLIDADAS-PA1 con aplicación de ADR-202 y ADR-203
+  en Capa 3 y decisiones de campos JSONB de los tres eventos nuevos
 
 ### Qué entendí
 
@@ -525,14 +527,13 @@ PostgreSQL.
 **GDPR data minimization en la práctica — Abstract devuelve ~30 campos:**
 De todo el JSON de Abstract, guardamos solo 4 campos con valor operativo
 real: `deliverability_status`, `quality_score`, `is_live_site`,
-`address_risk`. El resto (breaches, fechas de dominio, registrar, etc.)
-se descarta. No se guarda lo que no se usa — eso es minimización real,
-no solo teoría.
+`address_risk`. El resto se descarta. No se guarda lo que no se usa —
+eso es minimización real, no solo teoría.
 
 **El nombre del nodo en `$()` debe ser idéntico al del canvas:**
 `$('HTTP Abstract')` falla si el nodo se llama `HTTP Abstract (email)`.
-Mayúsculas, paréntesis y espacios incluidos — es una referencia exacta
-de string, no una búsqueda aproximada.
+Mayúsculas, paréntesis y espacios incluidos — referencia exacta de
+string, no búsqueda aproximada.
 
 ### Decisiones tomadas
 
@@ -544,8 +545,12 @@ de string, no una búsqueda aproximada.
 - **`clasificacion_realizada` guarda**: `accion_recomendada`, `razon`,
   `prioridad`, `nivel_riesgo` — los campos que determinaron la decisión
   de negocio, trazabilidad completa
-- **Workflow exportado como JSON** — el workflow ahora es código
-  versionable, no solo estado interno de Docker
+- **Workflow no se versiona en Git** — el JSON exportado de N8N puede
+  contener URLs de ngrok o credenciales hardcodeadas. Se mantiene solo
+  en local hasta Bloque 6, cuando ngrok desaparece y el entorno es limpio
+- **GeoLabor en standby** — PA1 debe estar en producción antes de
+  reactivar GeoLabor. PA1 actúa como banco de errores y base de patrones.
+  Nada de GeoLabor hasta que Bloque 6 esté completo
 
 ### Flujo actual del workflow (estado al cierre)
 
@@ -574,35 +579,87 @@ Webhook1
                   → false → capa2-registrar-duplicado (PostgreSQL) → fin
 ```
 
-### Archivos creados hoy
+### Archivos creados / actualizados hoy
 
-- `workflow/pa1-leads-workflow.json` — workflow completo exportado desde N8N
+- `pa1-diagrama-sistema.md` — actualizado a v4.3
+- `ADR-CONSOLIDADAS-PA1` — actualizado con decisiones de Sesión 7
 
-### Deuda técnica documentada
+## 01/05 ✅ PA1 — Documentación al día + decisiones de arquitectura pendientes
 
-- **Diagrama sistema v4.2**: actualizar para reflejar los cinco nodos de
+### Qué hice
+
+- Decidí poner GeoLabor en standby hasta que PA1 esté en producción real —
+  PA1 funciona como banco de errores y aprendizaje antes de replicar el
+  patrón en GeoLabor
+- Actualicé el diagrama de sistema a v4.3 — refleja los cinco nodos de
   Capa 3 y los dos Code nodes de restauración nuevos
-- **ADR-CONSOLIDADAS-PA1**: añadir decisiones de Sesión 7 (campos JSONB
-  de los tres eventos de Capa 3)
+- Enmendé ADR-203 con los campos JSONB reales implementados en Sesión 7:
+  los tres eventos de Capa 3 tenían campos de diseño, no los campos
+  construidos. Corrección aplicada en el ADR standalone y en el consolidado
+- Actualicé ADR-CONSOLIDADAS-PA1 a v1.1 con la enmienda del ADR-203 y
+  el estado operativo al día
+- Actualicé ADR-CONSOLIDADAS-pablo-cuevas a v2.1 — añadí ADR-007 al índice
+  (estaba en el repo pero no en el documento) y actualicé la serie 200
+  de "0 activos" a "6 activos" con referencia al archivo consolidado de PA1
+- Definí el objetivo de PA1: producción real, con VPS, sin ngrok.
+  No "funciona en local" — funciona en la red
+- Identifiqué brecha GDPR en las notificaciones de Telegram: el sistema
+  envía PII (nome, email, messaggio) a través de Telegram, que no es un
+  procesador GDPR-compliant y cuyos servidores están fuera de la UE.
+  Decisión de diseño pendiente de formalizar en ADR-206
+- Revisión superficial del tema VPS — candidatos evaluados por precio,
+  recursos y ubicación de servidor para GDPR
+
+### Qué entendí
+
+**Documentación desincronizada es deuda invisible:**
+ADR-203 tenía los campos de diseño originales, no los construidos. Sin
+la enmienda, cualquier consulta futura al ADR habría dado información
+incorrecta sobre qué vive en la DB. La documentación exacta no es
+burocracia — es la diferencia entre un sistema auditable y uno opaco.
+
+**Telegram no es una extensión del sistema — es un canal externo:**
+Cuando el notificador manda nombre y email por Telegram, esos datos salen
+de la infraestructura controlada. El lead está en PostgreSQL (EU, bajo
+control); la notificación viaja a servidores de Telegram (fuera de UE,
+sin garantías GDPR). Son dos cosas distintas. La solución no es eliminar
+Telegram — es cambiar qué se manda: solo el ID del lead + servicio +
+acción recomendada. Sin PII. El detalle se consulta en la DB.
+
+### Decisiones tomadas
+
+- **GeoLabor en standby** hasta que PA1 esté en producción
+- **Objetivo de PA1 redefinido**: producción real = VPS + dominio propio +
+  sin ngrok + N8N accesible públicamente
+- **ADR-206 identificado**: Minimización PII en Notificaciones Telegram —
+  pendiente de escribir antes de construir la notificación final
+
+### Archivos actualizados hoy
+
+- `pa1-diagrama-sistema.md` → v4.3
+- `adr/ADR-203-jsonb-campo-detalle.md` → enmendado 01/05
+- `ADR-CONSOLIDADAS-PA1_01-05-2026.md` → v1.1 (supersede _25-04-2026)
+- `ADR-CONSOLIDADAS-pablo-cuevas_01-05-2026_.md` → v2.1 (supersede _16-04-2026)
 
 ### Pendiente para próxima sesión
 
+**Antes de tocar código:**
+- Escribir ADR-206: Minimización PII en Notificaciones Telegram
+  — decisión Type 1, afecta cómo se construye la Capa 4 entera
+  — solución ya definida: ID + servicio + acción, sin nombre ni email
 
-**PA1 — deuda pendiente:**
-- Actualizar diagrama sistema v4.2 con nodos de Capa 3
-- Evaluar si el workflow JSON exportado necesita limpieza antes de
-  commitearlo (credenciales, URLs ngrok hardcodeadas)
-- Bloque 6 en el horizonte: VPS + Nginx + Certbot — N8N en producción,
-  ngrok desaparece
+**Bloque 6 — VPS (objetivo inmediato):**
+- Contratar Hetzner CX22 (2 vCPU, 4GB RAM, ~4€/mes, datacenter Alemania)
+- Setup inicial: Ubuntu + Docker + Compose en el servidor
+- Nginx como reverse proxy + Certbot para HTTPS
+- Deploy N8N + PostgreSQL en producción con restart automático
+- Actualizar URL webhook en pablocuevas.it → eliminar ngrok definitivamente
+- `EXECUTIONS_DATA_MAX_AGE=30` en docker-compose de producción
 
-
-**GeoLabor — antes de construir**:
-- Email de scope al contacto de GeoLabor documentando por escrito qué incluye
-  el piloto gratuito y qué queda fuera. Nada de código hasta que esto esté enviado.
-- Mapeo técnico detallado de la variante simple: plantilla base → celdas destino
-  por tamiz en Foglio2 → celdas de entrada del triángulo.
-- Definir el origen exacto de la massa netta secca en la pantalla de confirmación
-  (decisión pendiente número 1 del master context).
-- Actualizar el master context con la corrección de PA1 (es pablocuevas.it,
-  no Suanfarma) y con la entrada del Problema 9 (Arc42/C4).
-- Verificar el plazo de retención de 5 años del ADR-302 con el laboratorio.
+**Bloque 5 — deuda técnica Capa 2-4 (después de Bloque 6):**
+- UPDATE leads en rama reactivación (messaggio + timestamp_actualizacion)
+  — nodo que precede a `capa2-registrar-lead-reactivado`, aún no construido
+- Eventos pendientes: `notificacion_enviada`, `notificacion_pendiente`,
+  `lead_descartado`
+- Deduplicación 24h: lógica vive en N8N con `timestamp_creacion` —
+  el UNIQUE CONSTRAINT solo resuelve concurrencia instantánea

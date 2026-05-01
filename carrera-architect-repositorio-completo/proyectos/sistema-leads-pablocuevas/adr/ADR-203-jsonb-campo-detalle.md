@@ -1,6 +1,7 @@
 # ADR-203: JSONB en Campo `detalle` de Tabla Eventos
 
 **Fecha**: 25 de abril 2026  
+**Última revisión**: 01 de mayo 2026  
 **Estado**: ✅ Aceptada  
 **Tipo**: Táctica — decisión de schema  
 **Audiencia**: 🔒 Personal  
@@ -48,15 +49,16 @@ Un campo JSONB que almacena los datos específicos de cada evento como objeto.
 
 Cada tipo de evento define su propio contrato de campos en el JSONB:
 
-| Evento | Campos en `detalle` |
-|--------|---------------------|
-| `lead_recibido` | `origen`, `es_nuevo` |
-| `duplicado_detectado` | `horas_desde_creacion` |
-| `lead_reactivado` | `timestamp_original`, `dias_desde_creacion` |
-| `abstract_consultado` | `status`, `smtp_valid`, `live_site`, `es_libre`, `es_desechable`, `nivel_riesgo` |
-| `abstract_error` | `codigo_error`, `mensaje`, `accion_tomada` |
-| `clasificacion_realizada` | `nivel`, `accion`, `razon` |
-| `notificacion_enviada` | `canal`, `tipo` |
+| Evento | Campos en `detalle` | Estado |
+|--------|---------------------|--------|
+| `lead_recibido` | `origen`, `es_nuevo` | ✅ Implementado S6 |
+| `duplicado_detectado` | `horas_desde_creacion` | ✅ Implementado S6 |
+| `lead_reactivado` | `timestamp_original`, `dias_desde_creacion` | ✅ Implementado S6 |
+| `abstract_consultado` | `deliverability_status`, `quality_score`, `is_live_site`, `address_risk` | ✅ Implementado S7 |
+| `abstract_error` | `error_message` | ✅ Implementado S7 |
+| `clasificacion_realizada` | `accion_recomendada`, `razon`, `prioridad`, `nivel_riesgo` | ✅ Implementado S7 |
+| `notificacion_enviada` | `canal`, `tipo` | ⏳ Pendiente Bloque 5 |
+| `lead_descartado` | `razon`, `accion_recomendada` | ⏳ Pendiente Bloque 5 |
 
 ---
 
@@ -70,6 +72,14 @@ Cada tipo de evento define su propio contrato de campos en el JSONB:
 ### Negativas ⚠️
 - Sin validación de schema a nivel de base de datos para el contenido del JSONB
 - El contrato de campos por tipo de evento vive en el código, no en la DB
+
+---
+
+**Enmienda 01/05/2026** — Campos de Capa 3 actualizados para reflejar
+implementación real (Sesión 7). Minimización GDPR aplicada: de ~30 campos
+disponibles en Abstract se guardan únicamente los 4 con propósito operativo
+demostrable. Campo `abstract_error` simplificado a `error_message` — cuando
+la API falla por completo, es el único dato disponible y disponible.
 
 ---
 
