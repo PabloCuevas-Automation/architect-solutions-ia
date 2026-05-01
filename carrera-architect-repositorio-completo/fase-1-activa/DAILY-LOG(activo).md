@@ -482,15 +482,118 @@ Webhook1
 - **ADR-CONSOLIDADAS-pablo-cuevas**: actualizar para referenciar que
   la serie 200 existe en su propio archivo consolidado
 
+## 28/04 ✅ PA1 Sesión 7 — Capa 3 eventos: Abstract + Clasificación
+
+### Qué hice
+
+- Levanté el stack Docker (PostgreSQL + pgAdmin + N8N) con `docker compose up -d`
+  — confirmé que el warning `No services to build` es inofensivo (todos los
+  servicios usan imágenes pre-construidas, no hay nada que compilar)
+- Construí los tres nodos de Capa 3 aplicando ADR-202 desde el inicio, sin
+  iteraciones de debugging:
+  - `capa3-registrar-abstract-consultado` — PostgreSQL con `json_build_object`
+  - `capa3-registrar-abstract-error` — PostgreSQL en rama de error de HTTP Abstract
+  - `capa3-registrar-clasificacion` — PostgreSQL después de `enriquecedor-clasificador`
+- Añadí dos Code nodes de restauración:
+  - `capa3-restaurar-datos-abstract` — devuelve output de `HTTP Abstract (email)`
+  - `capa3-restaurar-datos-clasificacion` — devuelve output de `enriquecedor-clasificador`
+- Activé la rama de error en `HTTP Abstract (email)` via Settings →
+  On Error → `Continue (using error output)` — genera salida `Error`
+  separada de la salida `Success`
+- Validé los tres eventos en pgAdmin con JOIN `eventos` + `leads` —
+  todos correctos y con JSONB coherente
+- Exporté el workflow completo como JSON a
+  `sistema-leads-pablocuevas/workflow/pa1-leads-workflow.json`
+  — primera vez que el workflow queda versionado en el repo
+
+### Qué entendí
+
+**El Code node de restauración es soberanía sobre el flujo de datos:**
+Los nodos PostgreSQL con INSERT sin RETURNING devuelven `{"success": true}`
+y destruyen el item. El patrón `return [$('nombre-nodo').first()]` no es
+solo un fix técnico — es una decisión arquitectónica consciente de qué
+datos salen de cada nodo. Puedes limpiar, filtrar o transformar antes de
+continuar. Eso es control explícito del flujo, no magia implícita.
+
+**La rama de error de HTTP en N8N no es automática:**
+Por defecto N8N detiene el flujo si un nodo HTTP falla. Para capturar ese
+error y registrarlo en `eventos`, hay que activar explícitamente
+`Continue (using error output)` en Settings. Eso abre una segunda salida
+en el nodo — la rama roja. Sin ese toggle, el error nunca llega al nodo
+PostgreSQL.
+
+**GDPR data minimization en la práctica — Abstract devuelve ~30 campos:**
+De todo el JSON de Abstract, guardamos solo 4 campos con valor operativo
+real: `deliverability_status`, `quality_score`, `is_live_site`,
+`address_risk`. El resto (breaches, fechas de dominio, registrar, etc.)
+se descarta. No se guarda lo que no se usa — eso es minimización real,
+no solo teoría.
+
+**El nombre del nodo en `$()` debe ser idéntico al del canvas:**
+`$('HTTP Abstract')` falla si el nodo se llama `HTTP Abstract (email)`.
+Mayúsculas, paréntesis y espacios incluidos — es una referencia exacta
+de string, no una búsqueda aproximada.
+
+### Decisiones tomadas
+
+- **Campos guardados en `abstract_consultado`**: `deliverability_status`,
+  `quality_score`, `is_live_site`, `address_risk` — mínimo operativo,
+  sin PII redundante
+- **`abstract_error` guarda solo `error_message`** — el único dato
+  disponible cuando la API falla por completo
+- **`clasificacion_realizada` guarda**: `accion_recomendada`, `razon`,
+  `prioridad`, `nivel_riesgo` — los campos que determinaron la decisión
+  de negocio, trazabilidad completa
+- **Workflow exportado como JSON** — el workflow ahora es código
+  versionable, no solo estado interno de Docker
+
+### Flujo actual del workflow (estado al cierre)
+
+```
+Webhook1
+  → capa1-validacion-hmac (placeholder HMAC — Bloque 7)
+  → capa2-persistencia-upsert (CTE atómica → PostgreSQL)
+  → capa2-merge-datos
+  → capa2-if-es-nuevo
+      → true  → capa2-registrar-lead-recibido (PostgreSQL)
+                → capa2-restaurar-datos-recibido
+                → procesador-body1
+                → HTTP Abstract (email)
+                    → Success → capa3-registrar-abstract-consultado (PostgreSQL)
+                                → capa3-restaurar-datos-abstract
+                                → enriquecedor-clasificador
+                                → capa3-registrar-clasificacion (PostgreSQL)
+                                → capa3-restaurar-datos-clasificacion
+                                → IF → Switch → Telegram
+                    → Error   → capa3-registrar-abstract-error (PostgreSQL) → fin
+      → false → capa2-logica-duplicado
+              → capa2-if-reactivado
+                  → true  → capa2-registrar-lead-reactivado (PostgreSQL)
+                             → capa2-restaurar-datos-reactivado
+                             → procesador-body1 (mismo flujo desde HTTP Abstract)
+                  → false → capa2-registrar-duplicado (PostgreSQL) → fin
+```
+
+### Archivos creados hoy
+
+- `workflow/pa1-leads-workflow.json` — workflow completo exportado desde N8N
+
+### Deuda técnica documentada
+
+- **Diagrama sistema v4.2**: actualizar para reflejar los cinco nodos de
+  Capa 3 y los dos Code nodes de restauración nuevos
+- **ADR-CONSOLIDADAS-PA1**: añadir decisiones de Sesión 7 (campos JSONB
+  de los tres eventos de Capa 3)
+
 ### Pendiente para próxima sesión
 
-**PA1 Sesión 7 — Capa 3 eventos:**
-Registrar `abstract_consultado`, `abstract_error` y
-`clasificacion_realizada` en la tabla `eventos` aplicando el patrón
-ADR-202 desde el inicio — sin iteraciones de debugging.
 
-Antes de empezar: verificar que no queden nodos PostgreSQL en el
-workflow con Query Parameters activo : REVISADO Y NO HAY QUERY PARAMETERS EN LOS NODOS POSTGRESQL
+**PA1 — deuda pendiente:**
+- Actualizar diagrama sistema v4.2 con nodos de Capa 3
+- Evaluar si el workflow JSON exportado necesita limpieza antes de
+  commitearlo (credenciales, URLs ngrok hardcodeadas)
+- Bloque 6 en el horizonte: VPS + Nginx + Certbot — N8N en producción,
+  ngrok desaparece
 
 
 **GeoLabor — antes de construir**:
