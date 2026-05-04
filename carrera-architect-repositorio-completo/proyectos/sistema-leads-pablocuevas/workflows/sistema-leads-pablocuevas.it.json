@@ -1,0 +1,1157 @@
+{
+  "name": "sistema-leads-pablocuevas.it",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "eb65edcd-6baa-41c0-8ed5-35d2c3fe0aa1",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -640,
+        80
+      ],
+      "id": "775fa48e-a001-41a2-ad8b-9bd9bb1633e6",
+      "name": "Webhook1",
+      "webhookId": "eb65edcd-6baa-41c0-8ed5-35d2c3fe0aa1"
+    },
+    {
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        3680,
+        -208
+      ],
+      "id": "8094af66-31e4-4aa2-8ad1-b95b1994ac50",
+      "name": "Respond to Webhook1"
+    },
+    {
+      "parameters": {
+        "content": "## Webhook receptor de leads y notificador Telegram\n**Trigger: POST desde Thunder Client o cualquier cliente HTTP\nProcesa: nombre y email del body\nManeja: campos faltantes con optional chaining + fallback\nResponde: JSON procesado al emisor\nTest: Thunder Client → Body JSON → Execute workflow activo\nPropósito: capturar leads de pablocuevas.it, enriquecerlos con validación de email y notificar en tiempo real.",
+        "height": 352,
+        "width": 304
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -1008,
+        -16
+      ],
+      "typeVersion": 1,
+      "id": "1a2f6c55-2928-43a8-9ee8-04fb63f47def",
+      "name": "Sticky Note4"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.all()[0];\nconst body = item.json.body || item.json;\n\nconst dominiosGratuitos = [\"gmail.com\", \"hotmail.com\", \"yahoo.com\", \"outlook.com\", \"libero.it\", \"virgilio.it\"];\n\nconst email = body.email?.toLowerCase().trim() || null;\nconst dominio = email?.split(\"@\")[1] || null;\nconst prioridad = !dominio ? \"no especificada\" \n  : dominiosGratuitos.includes(dominio) ? \"baja\" \n  : \"alta\";\n\nconst timestamp = new Date().toLocaleString(\"it-IT\", { timeZone: \"Europe/Rome\" });\n\nreturn [{\n  json: {\n    nome: body.nome || \"sconosciuto\",\n    cognome: body.cognome || \"\",\n    email: email,\n    azienda: body.azienda || \"non specificata\",\n    servizio: body.servizio || \"non specificato\",\n    messaggio: body.messaggio || \"\",\n    prioridad: prioridad,\n    dominio: dominio,\n    timestamp_roma: timestamp,\n    procesado: true\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1376,
+        64
+      ],
+      "id": "5e4f673e-ba8d-4727-aab2-2635684b7b3c",
+      "name": "procesador-body1"
+    },
+    {
+      "parameters": {
+        "content": "##Abstract Email Reputation API\n**\n- Auth: Query Auth (api_key como query param — proveedor no soporta header)\n- Endpoint: GET https://emailreputation.abstractapi.com/v1/\n- Params: api_key (vault), email (dinámico)\n- Output: entregable, esEmailLibre, esDesechable, tipoCuenta, nivelRiesgo, accion_recomendada, razon\n- Campos descartados: email_sender.first/last_name (PII sin propósito), email_domain.domain (redundante), email_breaches (no relevante para clasificación)\n- Criterio accion_recomendada: descartar (desechable/no entregable/riesgo alto) → revisar_manualmente (riesgo medio o personal+libre) → procesar (resto)",
+        "height": 384,
+        "width": 368
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        192,
+        -752
+      ],
+      "id": "4a9cbdc0-8de9-450d-ae8e-9962835271a0",
+      "name": "Sticky Note6"
+    },
+    {
+      "parameters": {
+        "url": "https://emailreputation.abstractapi.com/v1/",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "email",
+              "value": "={{ $('procesador-body1').item.json.email }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1552,
+        64
+      ],
+      "id": "d71bbdad-5002-4b34-9d45-87d8a3dc64e6",
+      "name": "HTTP Abstract (email)",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "X6sB6X6rce9kLXt5",
+          "name": "Abstract Email Reputation (Header)"
+        },
+        "httpQueryAuth": {
+          "id": "oWoqC54hJAhUMZnu",
+          "name": "Abstract Email Reputation (Query)"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nreturn items.map(item => {\n  const lead = $('procesador-body1').item.json;\n  const abstract = item.json;\n\n  // Fallback si Abstract falló\n  const abstractFallo = !abstract.email_deliverability;\n\n  const entregable = abstractFallo ? null : abstract.email_deliverability.status === \"deliverable\";\n  const esEmailLibre = abstractFallo ? null : abstract.email_quality.is_free_email;\n  const esDesechable = abstractFallo ? null : abstract.email_quality.is_disposable;\n  const nivelRiesgo = abstractFallo ? \"desconocido\" : abstract.email_risk.address_risk_status;\n  const tipoCuenta = abstractFallo ? \"desconocido\" : (abstract.email_sender.organization_name === null && esEmailLibre ? \"personal\" : \"comercial\");\n  \n  let accion, razon;\n\n  if (!abstractFallo && (esDesechable || !entregable || nivelRiesgo === \"high\")) {\n    accion = \"descartar\";\n    razon = esDesechable ? \"email desechable\" : !entregable ? \"email no entregable\" : \"riesgo alto detectado\";\n  } else if (abstractFallo) {\n    accion = \"revisar_manualmente\";\n    razon = \"enriquecimiento no disponible — revisar manualmente\";\n  } else if (nivelRiesgo === \"medium\" || esEmailLibre) {\n    accion = \"revisar_manualmente\";\n    razon = nivelRiesgo === \"medium\" ? \"riesgo medio detectado\" : \"cuenta personal con email libre\";\n  } else {\n    accion = \"procesar\";\n    razon = \"email corporativo verificado, riesgo bajo\";\n  }\n\n  const prioridad = \n  abstract.accion_recomendada === \"descartar\" ? \"baja\" :\n  esEmailLibre ? \"media\" :\n  nivelRiesgo === \"low\" ? \"alta\" : \"media\";\n\n  return {\n    json: {\n      nome: lead.nome,\n      cognome: lead.cognome,\n      email: lead.email,\n      azienda: lead.azienda,\n      servizio: lead.servizio,\n      messaggio: lead.messaggio,\n      timestamp_roma: lead.timestamp_roma,\n      procesado: lead.procesado,\n      tipoCuenta,\n      nivelRiesgo,\n      esEmailLibre,\n      esDesechable,\n      abstract_status: abstract.email_deliverability?.status,\n      abstract_smtp_valid: abstract.email_deliverability?.is_smtp_valid,\n      abstract_live_site: abstract.email_domain?.is_live_site,\n      accion_recomendada: accion,\n      razon,\n      prioridad\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2176,
+        64
+      ],
+      "id": "9859fac4-08b7-45c6-9bcc-58bca50292b2",
+      "name": "enriquecedor-clasificador"
+    },
+    {
+      "parameters": {
+        "content": " \n** Deuda técnica: sistema no es idempotente — el mismo lead procesado dos veces genera dos notificaciones Telegram. Sin consecuencias graves sin DB. Resolución programada: Bloque 5 con deduplicación en PostgreSQL.",
+        "height": 112,
+        "width": 416
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -624,
+        720
+      ],
+      "id": "fa32f5d1-3516-4426-b63f-8e0b1a149a07",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "## Sistema de captura y clasificación de leads — pablocuevas.it → Abstract → Telegram",
+        "height": 80,
+        "width": 1008
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        736,
+        768
+      ],
+      "id": "a8022d02-efda-412c-892e-1049ad2be2cf",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "** Deuda técnica: sin política de retención para PII incluyendo messaggio. Resolución programada: Bloque 5 al implementar PostgreSQL — definir retención máxima y job de eliminación automática.",
+        "height": 128,
+        "width": 432
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -48,
+        752
+      ],
+      "id": "e8a3fa5d-6abf-42f7-9e74-47835d58466d",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.accion_recomendada }}",
+                    "rightValue": "procesar",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "0d63ce60-e630-4341-be95-6b867a86b5dc"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "d48d4b6d-38ce-49ef-9cde-1dcc9ea4090d",
+                    "leftValue": "={{ $json.accion_recomendada }}",
+                    "rightValue": "revisar_manualmente",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "322e1408-c796-44e6-ab7f-06858560655f",
+                    "leftValue": "={{ $json.accion_recomendada }}",
+                    "rightValue": "descartar",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        3040,
+        -64
+      ],
+      "id": "3907fc2c-07e7-43bf-b1bd-f3f743b78f86",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e2767c71-9ab1-4199-a985-8f8ecfbb8982",
+              "name": "accion",
+              "value": "descartado",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        3392,
+        112
+      ],
+      "id": "a32b11f9-066f-4b3f-83c5-836901b0ac4e",
+      "name": "descartado"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nreturn items.map(item => {\n  const d = item.json;\n\n  // Señales de entrada\n  const esDesechable = d.esDesechable === true;\n  const esRiesgoAlto = d.nivelRiesgo === \"high\";\n  const esEmailCorporativo = d.esEmailLibre === false;\n  const tieneEmpresa = d.azienda && d.azienda.trim() !== \"\";\n\n  // Lógica de decisión\n  let accion, razon;\n\n   if (esDesechable || esRiesgoAlto) {\n    accion = \"descartar\";\n    razon = esDesechable ? \"email desechable\" : \"riesgo alto detectado por Abstract\";\n} else if (esEmailCorporativo && tieneEmpresa && d.abstract_live_site !== null) {\n    accion = \"Procesar\";\n    razon = \"Email corporativo con empresa declarada\";\n} else {\n    accion = \"Revisar manualmente\";\n    razon = d.abstract_live_site === null \n        ? \"Dominio no verificable por Abstract\" \n        : \"Confianza insuficiente para decisión automática\";\n}\n\n  return {\n    json: {\n      ...item.json,\n      nivel_resolucion: \"nivel2\",\n      accion_nivel2: accion,\n      razon_nivel2: razon\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3024,
+        336
+      ],
+      "id": "06bf0d95-ec36-4df0-bbcc-54de82c4c019",
+      "name": "nivel2-reglas-propias"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e2767c71-9ab1-4199-a985-8f8ecfbb8982",
+              "name": "accion",
+              "value": "descartado",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        3568,
+        320
+      ],
+      "id": "a98a5d58-7057-41c1-ae3d-51a27d6fad80",
+      "name": "descartado1"
+    },
+    {
+      "parameters": {
+        "chatId": "8043204939",
+        "text": "=✅ NUEVO LEAD — ALTA CONFIANZA\n📊 Clasificado automáticamente por Abstract\n\n👤 {{ $json.nome }} {{ $json.cognome }}\n📧 {{ $json.email }}\n🏢 {{ $json.azienda }}\n🛠 {{ $json.servizio }}\n💬 {{ $json.messaggio }}\n\n⚡ Acción: {{ $json.accion_recomendada }}\n🔍 Razón: {{ $json.razon }}\n🎯 Prioridad: {{ $json.prioridad }}\n🕐 {{ $json.timestamp_roma }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        3392,
+        -208
+      ],
+      "id": "5f542f4e-8d82-40d4-8d94-ec2f3b937e94",
+      "name": "notificador-procesar-nivel1",
+      "webhookId": "0b776d22-696d-48a3-a436-5051092f2d40",
+      "credentials": {
+        "telegramApi": {
+          "id": "XJIljwR49kmFufcH",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "8043204939",
+        "text": "=⚠️ LEAD — REVISIÓN MANUAL REQUERIDA\n📊 Nivel de confianza: BAJO (Nivel 2)\n\n👤 {{ $json.nome }} {{ $json.cognome }}\n📧 {{ $json.email }}\n🏢 {{ $json.azienda }}\n🛠  {{ $json.servizio }}\n💬 {{ $json.messaggio }}\n\n🔍 Razón de escalada: {{ $json.razon_nivel2 }}\n⚡ Acción sugerida: {{ $json.accion_nivel2 }}\n🕐 {{ $json.timestamp_roma }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        3568,
+        464
+      ],
+      "id": "88b454f2-e069-44cb-8b91-cf81e97351ba",
+      "name": "notificador-revisar-nivel2",
+      "webhookId": "0b776d22-696d-48a3-a436-5051092f2d40",
+      "credentials": {
+        "telegramApi": {
+          "id": "XJIljwR49kmFufcH",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "8043204939",
+        "text": "=🔎 LEAD — REVISIÓN MANUAL REQUERIDA\n📊 Nivel de confianza: ALTO (Nivel 1) — Abstract marcó para revisión\n\n👤 {{ $json.nome }} {{ $json.cognome }}\n📧 {{ $json.email }}\n🏢 {{ $json.azienda }}\n🛠 {{ $json.servizio }}\n💬 {{ $json.messaggio }}\n\n⚡ Acción sugerida: {{ $json.accion_recomendada }}\n🔍 Razón: {{ $json.razon }}\n🎯 Prioridad: {{ $json.prioridad }}\n🕐 {{ $json.timestamp_roma }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        3392,
+        -48
+      ],
+      "id": "07b5662f-cabb-4f80-bccd-aa7a4460609c",
+      "name": "notificador-revisar-nivel1",
+      "webhookId": "0b776d22-696d-48a3-a436-5051092f2d40",
+      "credentials": {
+        "telegramApi": {
+          "id": "XJIljwR49kmFufcH",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// CAPA 1 — VALIDACIÓN DE FIRMA HMAC\n// TODO Bloque 7: implementar validación real del header X-Webhook-Signature\n\n// Función de sanitización: escapa comillas simples para queries PostgreSQL\nconst sanitizeStr = (val) => {\n  if (val === null || val === undefined) return '';\n  return typeof val === 'string' ? val.replace(/'/g, \"''\") : String(val);\n};\n\nconst items = $input.all();\n\nreturn items.map(item => {\n  const body = item.json.body || item.json;\n  \n  return {\n    json: {\n      ...item.json,\n      body: {\n        nome:          sanitizeStr(body.nome),\n        cognome:       sanitizeStr(body.cognome),\n        email:         body.email?.toLowerCase().trim() || null,\n        azienda:       sanitizeStr(body.azienda),\n        servizio:      sanitizeStr(body.servizio),\n        messaggio:     sanitizeStr(body.messaggio),\n        timestamp_roma: sanitizeStr(body.timestamp_roma)\n      }\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -432,
+        80
+      ],
+      "id": "26514dae-981b-4506-a48c-061d85ab30f9",
+      "name": "capa1-validacion-hmac"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH upsert AS (\n  INSERT INTO leads (nome, cognome, email, azienda, servizio, messaggio, timestamp_roma, status)\n  VALUES (\n    '{{ $json.body.nome }}',\n    '{{ $json.body.cognome }}',\n    '{{ $json.body.email }}',\n    '{{ $json.body.azienda }}',\n    '{{ $json.body.servizio }}',\n    '{{ $json.body.messaggio }}',\n    '{{ $json.body.timestamp_roma }}',\n    'pendiente'\n  )\n  ON CONFLICT (email, servizio) DO NOTHING\n  RETURNING id, timestamp_creacion, TRUE AS es_nuevo\n)\nSELECT id, timestamp_creacion, es_nuevo FROM upsert\nUNION ALL\nSELECT id, timestamp_creacion, FALSE AS es_nuevo\nFROM leads\nWHERE email = '{{ $json.body.email }}' AND servizio = '{{ $json.body.servizio }}'\n  AND (SELECT COUNT(*) FROM upsert) = 0",
+        "options": {
+          "queryReplacement": "="
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -224,
+        80
+      ],
+      "id": "80f41c91-e1dc-4ca6-81e0-b7a183739edf",
+      "name": "capa2-persistencia-upsert",
+      "credentials": {
+        "postgres": {
+          "id": "40poyOU7kUOyxe7z",
+          "name": "PostgreSQL — leads local"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Combina el resultado de PostgreSQL con los datos originales del webhook\nconst postgresResult = $input.first().json;\nconst datosOriginales = $('capa1-validacion-hmac').first().json.body;\n\nreturn [{\n  json: {\n    ...datosOriginales,\n    id: postgresResult.id,\n    timestamp_creacion: postgresResult.timestamp_creacion,\n    es_nuevo: postgresResult.es_nuevo\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -16,
+        80
+      ],
+      "id": "680bee68-3d0a-449c-99e6-261658817f56",
+      "name": "capa2-merge-datos"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "63512f3c-a483-49e0-9d48-33be4f1ba44e",
+              "leftValue": "={{ $json.es_nuevo }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        192,
+        80
+      ],
+      "id": "99e2c09f-13c3-4812-b4a6-2da3c6cc654b",
+      "name": "capa2-if-es-nuevo"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\n\nconst creacion = new Date(item.timestamp_creacion);\nconst ahora = new Date();\nconst horas = (ahora - creacion) / (1000 * 60 * 60);\n\nif (horas < 24) {\n  return [{\n    json: {\n      ...item,\n      tipo_duplicado: 'duplicado_real',\n      horas_desde_creacion: horas,\n      accion: 'ignorar'\n    }\n  }];\n} else {\n  return [{\n    json: {\n      ...item,\n      tipo_duplicado: 'lead_reactivado',\n      horas_desde_creacion: horas,\n      dias_desde_creacion: Math.floor(horas / 24),\n      accion: 'procesar'\n    }\n  }];\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        304,
+        320
+      ],
+      "id": "98016160-fa85-42b1-b370-e11f6e42bb6d",
+      "name": "capa2-logica-duplicado"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "c4bc1782-5e5f-477d-bf7a-33316285f807",
+              "leftValue": "={{ $json.tipo_duplicado }}",
+              "rightValue": "lead_reactivado",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        560,
+        320
+      ],
+      "id": "e94c77d3-24fd-4f5f-a98f-f3d10eefe827",
+      "name": "capa2-if-reactivado"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO eventos (lead_id, tipo_evento, detalle)\nVALUES (\n  {{ $json.id }},\n  'lead_recibido',\n  '{\"origen\": \"webhook\", \"es_nuevo\": true}'::jsonb\n)",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        640,
+        64
+      ],
+      "id": "dcfd7456-c5c7-44cd-b009-5acd043cb3af",
+      "name": "capa2-registrar-lead-recibido",
+      "credentials": {
+        "postgres": {
+          "id": "40poyOU7kUOyxe7z",
+          "name": "PostgreSQL — leads local"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO eventos (lead_id, tipo_evento, detalle)\nVALUES (\n  {{ $json.id }},\n  'duplicado_detectado',\n  json_build_object('horas_desde_creacion', {{ $json.horas_desde_creacion }})::jsonb\n)",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1024,
+        528
+      ],
+      "id": "09990f15-2148-4f16-ba0d-a376b9556fc9",
+      "name": "capa2-registrar-duplicado",
+      "credentials": {
+        "postgres": {
+          "id": "40poyOU7kUOyxe7z",
+          "name": "PostgreSQL — leads local"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO eventos (lead_id, tipo_evento, detalle)\nVALUES (\n  {{ $json.id }},\n  'lead_reactivado',\n  json_build_object('timestamp_original', '{{ $json.timestamp_creacion }}', 'dias_desde_creacion', {{ $json.dias_desde_creacion }})::jsonb\n)",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        944,
+        304
+      ],
+      "id": "4b3edbfc-8818-441c-98f2-b09e5da72ac8",
+      "name": "capa2-registrar-lead-reactivado",
+      "credentials": {
+        "postgres": {
+          "id": "40poyOU7kUOyxe7z",
+          "name": "PostgreSQL — leads local"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return [$('capa2-merge-datos').first()];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        976,
+        64
+      ],
+      "id": "b48ab34d-0dce-47b3-a9c2-dd8d08c2ba57",
+      "name": "capa2-restaurar-datos-recibido"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [$('capa2-logica-duplicado').first()];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1232,
+        304
+      ],
+      "id": "39a44b15-a027-4498-bfe0-7b4e77ce2053",
+      "name": "capa2-restaurar-datos-reactivado"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO eventos (lead_id, tipo_evento, detalle)\nVALUES (\n  {{ $('capa2-merge-datos').first().json.id }},\n  'abstract_consultado',\n  json_build_object(\n    'deliverability_status', '{{ $json.email_deliverability.status }}',\n    'quality_score',         {{ $json.email_quality.score }},\n    'is_live_site',          {{ $json.email_domain.is_live_site }},\n    'address_risk',          '{{ $json.email_risk.address_risk_status }}'\n  )\n)",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1760,
+        64
+      ],
+      "id": "1681a72d-1e30-44ff-a43d-a089f2e7c665",
+      "name": "capa3-registrar-abstract-consultado",
+      "credentials": {
+        "postgres": {
+          "id": "40poyOU7kUOyxe7z",
+          "name": "PostgreSQL — leads local"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return [$('HTTP Abstract (email)').first()];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1968,
+        64
+      ],
+      "id": "bef47eda-db72-4ab8-9cba-88b812e5db91",
+      "name": "capa3-restaurar-datos-abstract"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO eventos (lead_id, tipo_evento, detalle)\nVALUES (\n  {{ $('capa2-merge-datos').first().json.id }},\n  'abstract_error',\n  json_build_object(\n    'error_message', '{{ $json.error.message }}'\n  )\n)",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1760,
+        272
+      ],
+      "id": "75d5ce96-0662-4f52-b580-6a1dc7e3fccc",
+      "name": "capa3-registrar-abstract-error",
+      "credentials": {
+        "postgres": {
+          "id": "40poyOU7kUOyxe7z",
+          "name": "PostgreSQL — leads local"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO eventos (lead_id, tipo_evento, detalle)\nVALUES (\n  {{ $('capa2-merge-datos').first().json.id }},\n  'clasificacion_realizada',\n  json_build_object(\n    'accion_recomendada', '{{ $json.accion_recomendada }}',\n    'razon',              '{{ $json.razon }}',\n    'prioridad',          '{{ $json.prioridad }}',\n    'nivel_riesgo',       '{{ $json.nivelRiesgo }}'\n  )\n)",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2384,
+        64
+      ],
+      "id": "a5bf5f84-9571-449b-b83b-0a257daf3a1c",
+      "name": "capa3-registrar-clasificacion",
+      "credentials": {
+        "postgres": {
+          "id": "40poyOU7kUOyxe7z",
+          "name": "PostgreSQL — leads local"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return [$('enriquecedor-clasificador').first()];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2592,
+        64
+      ],
+      "id": "17c512af-3067-4c2c-b6c6-49656a2dea86",
+      "name": "capa3-restaurar-datos-clasificacion"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [$('procesador-body1').first()];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1968,
+        272
+      ],
+      "id": "82ead0c6-a059-4a9c-a209-954b509a2eda",
+      "name": "capa3-restaurar-datos-abstract-error"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "183dd57d-3091-484c-a2ba-7f84dfb6a126",
+              "leftValue": "={{ $json.abstract_status }}",
+              "rightValue": "=deliverable",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            },
+            {
+              "id": "d93b77d6-7473-4ae9-8dd6-d05f9a1aed21",
+              "leftValue": "={{ $json.abstract_smtp_valid }}",
+              "rightValue": "=true",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            },
+            {
+              "id": "4036df31-0ee3-477c-b8fa-9e57d0d9792a",
+              "leftValue": "={{ $json.abstract_live_site }}",
+              "rightValue": "is not empty",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2800,
+        64
+      ],
+      "id": "165b3c55-6bca-4961-8cc1-64f607cece1e",
+      "name": "capa3-if-nivel1-o-nivel2"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "f8d4409f-5b1f-4395-bcdb-dfa5e0ea839e",
+              "leftValue": "={{ $json.esDesechable }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "fc5e745e-a775-423a-9330-04de8e412784",
+              "leftValue": "={{ $json.nivelRiesgo }}",
+              "rightValue": "\"high\"",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        3248,
+        336
+      ],
+      "id": "1934a2c6-702d-41c6-9bf6-98ebf82539be",
+      "name": "nivel2-if-descartar"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook1": {
+      "main": [
+        [
+          {
+            "node": "capa1-validacion-hmac",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "procesador-body1": {
+      "main": [
+        [
+          {
+            "node": "HTTP Abstract (email)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Abstract (email)": {
+      "main": [
+        [
+          {
+            "node": "capa3-registrar-abstract-consultado",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "capa3-registrar-abstract-error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "enriquecedor-clasificador": {
+      "main": [
+        [
+          {
+            "node": "capa3-registrar-clasificacion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "notificador-procesar-nivel1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "notificador-revisar-nivel1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "descartado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "descartado": {
+      "main": [
+        []
+      ]
+    },
+    "nivel2-reglas-propias": {
+      "main": [
+        [
+          {
+            "node": "nivel2-if-descartar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "notificador-procesar-nivel1": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "capa1-validacion-hmac": {
+      "main": [
+        [
+          {
+            "node": "capa2-persistencia-upsert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "capa2-persistencia-upsert": {
+      "main": [
+        [
+          {
+            "node": "capa2-merge-datos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "capa2-merge-datos": {
+      "main": [
+        [
+          {
+            "node": "capa2-if-es-nuevo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "capa2-if-es-nuevo": {
+      "main": [
+        [
+          {
+            "node": "capa2-registrar-lead-recibido",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "capa2-logica-duplicado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "capa2-logica-duplicado": {
+      "main": [
+        [
+          {
+            "node": "capa2-if-reactivado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "capa2-if-reactivado": {
+      "main": [
+        [
+          {
+            "node": "capa2-registrar-lead-reactivado",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "capa2-registrar-duplicado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "capa2-registrar-lead-recibido": {
+      "main": [
+        [
+          {
+            "node": "capa2-restaurar-datos-recibido",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "capa2-registrar-duplicado": {
+      "main": [
+        []
+      ]
+    },
+    "capa2-registrar-lead-reactivado": {
+      "main": [
+        [
+          {
+            "node": "capa2-restaurar-datos-reactivado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "capa2-restaurar-datos-recibido": {
+      "main": [
+        [
+          {
+            "node": "procesador-body1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "capa2-restaurar-datos-reactivado": {
+      "main": [
+        [
+          {
+            "node": "procesador-body1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "capa3-registrar-abstract-consultado": {
+      "main": [
+        [
+          {
+            "node": "capa3-restaurar-datos-abstract",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "capa3-restaurar-datos-abstract": {
+      "main": [
+        [
+          {
+            "node": "enriquecedor-clasificador",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "capa3-if-nivel1-o-nivel2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "capa3-registrar-clasificacion": {
+      "main": [
+        [
+          {
+            "node": "capa3-restaurar-datos-clasificacion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "capa3-restaurar-datos-clasificacion": {
+      "main": [
+        [
+          {
+            "node": "capa3-if-nivel1-o-nivel2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "capa3-registrar-abstract-error": {
+      "main": [
+        [
+          {
+            "node": "capa3-restaurar-datos-abstract-error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "capa3-restaurar-datos-abstract-error": {
+      "main": [
+        [
+          {
+            "node": "enriquecedor-clasificador",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "capa3-if-nivel1-o-nivel2": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "nivel2-reglas-propias",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "nivel2-if-descartar": {
+      "main": [
+        [
+          {
+            "node": "descartado1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "notificador-revisar-nivel2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "af40cc00-c3cb-4393-9224-a0bae7201fd5",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "50abbc54c4db3da4fed61fc6f11d7da45a0839a1a7b6698dd72c833e98b3ad61"
+  },
+  "id": "OS4aJ9IeFfOwWLz3",
+  "tags": []
+}
