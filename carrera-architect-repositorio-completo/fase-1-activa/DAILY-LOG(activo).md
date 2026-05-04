@@ -641,25 +641,185 @@ acción recomendada. Sin PII. El detalle se consulta en la DB.
 - `ADR-CONSOLIDADAS-PA1_01-05-2026.md` → v1.1 (supersede _25-04-2026)
 - `ADR-CONSOLIDADAS-pablo-cuevas_01-05-2026_.md` → v2.1 (supersede _16-04-2026)
 
+## 03/05 ✅ Bloque 6 — Arquitectura de seguridad VPS completa + planificación de deploy
+
+### Qué hice
+
+Sesión de arquitectura y planificación completa. No se tocó código.
+El objetivo era diseñar la infraestructura de seguridad del VPS antes de
+contratar el servidor — siguiendo el principio de ADR-010: seguridad antes
+que producción.
+
+**Triangulación de seguridad VPS — 4 rondas con Claude + Gemini + DeepSeek + ChatGPT:**
+- Ronda 1: Evaluación de proveedores VPS y decisión Hetzner CX22
+- Ronda 2: Hardening del sistema, aislamiento multi-proyecto, backups
+- Ronda 3: Documento consolidado completo — 12 capas validadas
+- Ronda 4: Gaps finales — TLS explícito, logs Docker, egress filtering
+- Simulación de ataque por ChatGPT — validación final del diseño
+- Gemini y DeepSeek validaron la simulación e identificaron el último gap crítico
+
+**Documentos generados (8 archivos):**
+- `ADR-008-arquitectura-seguridad-vps.md` — 9 capas de seguridad, universal
+- `ADR-009-seguridad-workflows-n8n.md` — auditoría de workflows, universal
+- `ADR-010-secuencia-deploy-seguridad-primero.md` — orden correcto de deploy, universal
+- `ADR-207-reconstruccion-capa4-pre-produccion.md` — PA1 específico
+- `CHECKLIST-PRE-PRODUCCION-PA1.md` — 40 ítems, todos deben ser ✅
+- `RUNBOOK-VPS-001.md` — guía de ejecución completa paso a paso
+- `DIAGRAMA-SEGURIDAD-VPS.html` — diagrama visual interactivo de las 9 capas
+- `WORKFLOW-AUDIT-TEMPLATE.md` — plantilla de auditoría de seguridad por workflow
+
+**ADR-007 generado como archivo individual:**
+- Existía en el consolidado pero no como archivo independiente en `serie-000-principios/`
+- Generado y añadido: MCP servers aprobados, rechazados, regla GDPR, evaluación de nuevos servers
+
+**Consolidado pablo-cuevas actualizado a v3.0:**
+- Incorpora ADR-007 completo, ADR-008, ADR-009, ADR-010
+- Índice actualizado: 16 entradas en series 000+100
+- Estado operativo: 11 ADRs en serie 000, 27 en total del sistema
+- Tabla de deuda actualizada: ADR-010 marcado como 🔴 bloquea deploy
+
+**Descubrimiento crítico — Capa 4 viola ADR-206:**
+Al revisar el workflow real (pa1-diagrama-sistema.md), se confirmó que los
+nodos de notificación actuales envían nome, cognome, email, azienda, servizio
+y messaggio por Telegram. Esto viola directamente ADR-206 (aprobado el 02/05).
+Esta contradicción no es deuda técnica futura — es una violación activa que
+debe resolverse antes de que entre cualquier dato real de cliente.
+
+**Corrección de numeración de ADRs:**
+ADR-207, 208, 209 eran incorrectos — contenido universal numerado como PA1.
+Renombrados: ADR-008, ADR-009, ADR-010. El ADR-207 de PA1 es ahora la
+reconstrucción de Capa 4.
+
+**Reorganización del repositorio:**
+- `sistema-leads-pablocuevas/adr/ADR-207-arquitectura-seguridad-vps.md` → eliminar
+- `serie-000-principios/` → añadir ADR-007, 008, 009, 010
+- `sistema-leads-pablocuevas/adr/` → añadir ADR-207-reconstruccion-capa4
+- `audits/workflows/_templates/` → mover WORKFLOW-AUDIT-TEMPLATE.md
+- `audits/workflows/` → renombrar audit existente con sufijo `_5layer_v1_17-03-2026`
+
+### Qué entendí
+
+**La diferencia entre riesgo operativo y riesgo existencial:**
+Un workflow que falla tiene segunda oportunidad — el lead está en PostgreSQL,
+hay logs, hay estado `pendiente`. Una brecha de datos PII no tiene segunda
+oportunidad — notificación GDPR en 72h, responsabilidad legal, pérdida de
+confianza irrecuperable. Diseñar para estos dos escenarios requiere prioridades
+asimétricas: la seguridad del segundo escenario no se negocia aunque retrase el deploy.
+
+**El gap que nadie menciona — Docker ignora UFW:**
+Docker manipula iptables directamente. Si mapeas `5432:5432` en el compose,
+PostgreSQL está expuesto a internet aunque UFW diga que está bloqueado. La solución
+correcta es eliminar el bloque `ports` en servicios que solo se comunican entre
+contenedores — sin mapeo de puertos, Docker no toca iptables.
+
+**Egress filtering es la defensa que convierte una brecha en un incidente contenible:**
+Sin egress filtering, un atacante que entra en un contenedor puede exfiltrar datos
+a cualquier servidor externo silenciosamente. Con la cadena DOCKER-USER bloqueando
+todo excepto HTTPS/HTTP/DNS, el atacante queda atrapado dentro. Para el GDPR, la
+diferencia es total: los datos no salen del servidor → no hay breach en sentido legal.
+
+**La triangulación tiene rendimientos decrecientes — saber cuándo parar:**
+Cuatro rondas con cuatro IAs produjeron gaps reales en cada ronda. A partir de
+cierto punto, los gaps son refinamientos de implementación, no decisiones arquitectónicas
+nuevas. La señal de cierre es la convergencia total en lo estructural.
+
+**Los workflows son el daño — la infraestructura solo contiene el daño:**
+Todo el hardening del VPS no evita que un workflow mal construido exfiltre datos
+usando los propios canales legítimos del sistema (Telegram con HTTPS permitido).
+La seguridad de aplicación es un proceso continuo de auditoría, no una configuración puntual.
+
+**El replay attack es GDPR, no solo integridad:**
+Un campo de texto libre como `messaggio` puede contener datos de categoría especial
+(salud, situación familiar, etc.). Reproducir esa petición 10.000 veces no es
+solo corrupción de datos — es procesamiento masivo no consentido de datos especiales
+bajo Art. 9 GDPR. El HMAC con timestamp pasa de Bloque 7 a prerequisito de producción.
+
+### Decisiones tomadas
+
+- **ADR-008**: Arquitectura de seguridad VPS — 9 capas, universal, todos los proyectos
+- **ADR-009**: Seguridad de workflows N8N — 3 preguntas de auditoría, universal
+- **ADR-010**: Secuencia de deploy: seguridad antes que producción — Type 1, universal
+- **ADR-207**: Reconstrucción de Capa 4 antes de producción — PA1 específico
+- **Hetzner CX22 confirmado**: empresa alemana, DPA firmable, datacenter EU,
+  convergencia unánime de las cuatro IAs
+- **Suanfarma límite multi-tenant**: VPS compartido válido para pilotos.
+  Cuando pase a cliente de pago → VPS dedicado (compliance farmacéutico)
+- **Replay attack sube de Bloque 7 a prerequisito pre-producción**: campo
+  `messaggio` puede contener datos GDPR Art. 9 — no es deuda técnica aceptable
+
+### Vulnerabilidades identificadas en PA1 (a resolver antes del deploy)
+
+| Vulnerabilidad | Riesgo | Resolver |
+|----------------|--------|---------|
+| HMAC como placeholder (Capa 1) | Cualquier petición HTTP procesada | Antes de Bloque 6 |
+| Capa 4 envía PII a Telegram | Violación activa ADR-206 | Antes de Bloque 6 |
+| messaggio sin sanitizar | XSS persistente en interfaz de administración | Antes de Bloque 6 |
+| SQL injection en expresiones inline | Riesgo con HMAC desactivado | Mitigado por HMAC — Bloque 7 |
+| Replay attack sin timestamp | GDPR Art. 9 si messaggio tiene datos especiales | Antes de Bloque 6 |
+
+### Archivos creados / actualizados hoy
+
+**Nuevos — serie 000:**
+- `serie-000-principios/ADR-007-principio-minimo-privilegio-acceso-ia.md`
+- `serie-000-principios/ADR-008-arquitectura-seguridad-vps.md`
+- `serie-000-principios/ADR-009-seguridad-workflows-n8n.md`
+- `serie-000-principios/ADR-010-secuencia-deploy-seguridad-primero.md`
+
+**Nuevos — PA1:**
+- `sistema-leads-pablocuevas/adr/ADR-207-reconstruccion-capa4-pre-produccion.md`
+- `sistema-leads-pablocuevas/checklist/CHECKLIST-PRE-PRODUCCION-PA1.md`
+- `sistema-leads-pablocuevas/runbooks/RUNBOOK-VPS-001.md`
+- `sistema-leads-pablocuevas/diagrams/DIAGRAMA-SEGURIDAD-VPS.html`
+- `sistema-leads-pablocuevas/audits/workflows/_templates/WORKFLOW-AUDIT-TEMPLATE.md`
+
+**Actualizados:**
+- `serie-consolidados/ADR-CONSOLIDADAS-pablo-cuevas_02-05-2026.md` → v3.0
+- `proyectos/triangulacion-seguridad-vps-proyectos/` → documentos de triangulación
+
+**Eliminados / renombrados:**
+- `sistema-leads-pablocuevas/adr/ADR-207-arquitectura-seguridad-vps.md` → ELIMINAR
+  (era número incorrecto — contenido movido a ADR-008 en serie-000)
+- `audits/workflows/WORKFLOW-AUDIT-TEMPLATE.md` → MOVER a `_templates/`
+- `audits/workflows/sistema-leads-enriquecido-audit.md` →
+  RENOMBRAR a `sistema-leads-enriquecido_5layer_v1_17-03-2026.md`
+
 ### Pendiente para próxima sesión
 
-**Antes de tocar código:**
-- Escribir ADR-206: Minimización PII en Notificaciones Telegram
-  — decisión Type 1, afecta cómo se construye la Capa 4 entera
-  — solución ya definida: ID + servicio + acción, sin nombre ni email
+**FASE A — Resolver vulnerabilidades (en local, antes de contratar Hetzner):**
 
-**Bloque 6 — VPS (objetivo inmediato):**
-- Contratar Hetzner CX22 (2 vCPU, 4GB RAM, ~4€/mes, datacenter Alemania)
-- Setup inicial: Ubuntu + Docker + Compose en el servidor
-- Nginx como reverse proxy + Certbot para HTTPS
-- Deploy N8N + PostgreSQL en producción con restart automático
-- Actualizar URL webhook en pablocuevas.it → eliminar ngrok definitivamente
-- `EXECUTIONS_DATA_MAX_AGE=30` en docker-compose de producción
+1. **Implementar HMAC real en Capa 1**
+   - Reemplazar placeholder por validación real de firma HMAC
+   - Añadir timestamp en el payload del formulario
+   - Ventana de rechazo: > 300 segundos
+   - Verificar con Thunder Client: sin header → rechaza, firma inválida → rechaza, firma válida → procesa
 
-**Bloque 5 — deuda técnica Capa 2-4 (después de Bloque 6):**
-- UPDATE leads en rama reactivación (messaggio + timestamp_actualizacion)
-  — nodo que precede a `capa2-registrar-lead-reactivado`, aún no construido
-- Eventos pendientes: `notificacion_enviada`, `notificacion_pendiente`,
-  `lead_descartado`
-- Deduplicación 24h: lógica vive en N8N con `timestamp_creacion` —
-  el UNIQUE CONSTRAINT solo resuelve concurrencia instantánea
+2. **Reconstruir Capa 4 según ADR-206 y ADR-207**
+   - Eliminar nome, cognome, email, messaggio de los nodos de Telegram
+   - Nuevo formato: ID + servicio + acción + riesgo + link
+   - El link apunta a la interfaz de administración (prerequisito: VPS operativo)
+   - Verificar que el mensaje de Telegram NO contiene PII
+
+3. **Sanitizar messaggio en procesador-body1**
+   - Añadir escape de HTML antes del INSERT en PostgreSQL
+   - Verificar con payload `<script>alert('xss')</script>` → debe almacenarse sanitizado
+
+4. **Re-auditar sistema-leads-enriquecido:**
+   - `sistema-leads-enriquecido_5layer_v2_02-05-2026.md` — actualizar estado de deudas resueltas
+   - `sistema-leads-enriquecido_security_02-05-2026.md` — nuevo security audit (ADR-009)
+
+**FASE B — VPS (después de resolver FASE A):**
+- Contratar Hetzner CX22 (datacenter Alemania o Finlandia)
+- Firmar DPA inmediatamente tras contratar
+- Ejecutar RUNBOOK-VPS-001.md completo
+- Completar CHECKLIST-PRE-PRODUCCION-PA1.md (todos los ítems en ✅)
+- Snapshot post-hardening antes de primer proyecto
+
+**FASE C — Deploy PA1:**
+- Completar checklist pre-producción
+- Deploy con vulnerabilidades resueltas
+- Primer lead real en producción
+
+---
+
+**Nota de sesión**: Sesión íntegramente de arquitectura y planificación.
+Próxima sesión arranca directo en código — HMAC real en Capa 1.

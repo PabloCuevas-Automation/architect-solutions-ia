@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Arquitectura de Seguridad VPS — Pablo Cuevas</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600&display=swap');
+
+  :root {
+    --bg: #0a0e1a;
+    --surface: #111827;
+    --surface2: #1a2235;
+    --border: #1e2d45;
+    --accent-red: #ff3b5c;
+    --accent-amber: #f59e0b;
+    --accent-green: #10b981;
+    --accent-blue: #3b82f6;
+    --accent-purple: #8b5cf6;
+    --text: #e2e8f0;
+    --text-muted: #64748b;
+    --text-dim: #334155;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'IBM Plex Sans', monospace;
+    min-height: 100vh;
+    padding: 40px 24px;
+  }
+
+  .header {
+    text-align: center;
+    margin-bottom: 48px;
+  }
+
+  .header h1 {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--accent-blue);
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  .header h2 {
+    font-size: 28px;
+    font-weight: 300;
+    color: var(--text);
+    letter-spacing: -0.5px;
+  }
+
+  .header .meta {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 8px;
+    letter-spacing: 1px;
+  }
+
+  .layout {
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+
+  /* ATTACK PATH */
+  .attack-section {
+    margin-bottom: 48px;
+  }
+
+  .section-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 16px;
+    padding-left: 4px;
+  }
+
+  .attacker-entry {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 4px;
+    padding: 0 4px;
+  }
+
+  .internet-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--accent-red);
+    letter-spacing: 2px;
+  }
+
+  .arrow-down {
+    display: flex;
+    justify-content: center;
+    margin: 2px 0;
+    color: var(--text-dim);
+    font-size: 18px;
+  }
+
+  /* LAYERS */
+  .layers {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .layer {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .layer-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .layer-number {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-muted);
+    min-width: 28px;
+  }
+
+  .layer-name {
+    font-size: 13px;
+    font-weight: 600;
+    flex: 1;
+  }
+
+  .layer-badge {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 3px;
+  }
+
+  .badge-critical { background: rgba(255,59,92,0.15); color: var(--accent-red); border: 1px solid rgba(255,59,92,0.3); }
+  .badge-high { background: rgba(245,158,11,0.15); color: var(--accent-amber); border: 1px solid rgba(245,158,11,0.3); }
+  .badge-medium { background: rgba(59,130,246,0.15); color: var(--accent-blue); border: 1px solid rgba(59,130,246,0.3); }
+  .badge-process { background: rgba(139,92,246,0.15); color: var(--accent-purple); border: 1px solid rgba(139,92,246,0.3); }
+
+  .layer-body {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 0;
+  }
+
+  .layer-col {
+    padding: 12px 16px;
+    border-right: 1px solid var(--border);
+  }
+  .layer-col:last-child { border-right: none; }
+
+  .col-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+  }
+
+  .col-items {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .col-item {
+    font-size: 12px;
+    color: #94a3b8;
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    line-height: 1.4;
+  }
+
+  .col-item::before {
+    content: '—';
+    color: var(--text-dim);
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  .blocks-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 9px;
+    color: var(--text-dim);
+    padding: 4px 16px 8px;
+  }
+
+  /* Layer color accents */
+  .layer-0 { border-left: 3px solid #475569; }
+  .layer-1 { border-left: 3px solid var(--accent-red); }
+  .layer-2 { border-left: 3px solid var(--accent-amber); }
+  .layer-3 { border-left: 3px solid var(--accent-amber); }
+  .layer-4 { border-left: 3px solid var(--accent-amber); }
+  .layer-5 { border-left: 3px solid var(--accent-blue); }
+  .layer-6 { border-left: 3px solid var(--accent-blue); }
+  .layer-7 { border-left: 3px solid var(--accent-blue); }
+  .layer-8 { border-left: 3px solid var(--accent-green); }
+  .layer-9 { border-left: 3px solid var(--accent-purple); }
+
+  /* ATTACK SIMULATION */
+  .simulation {
+    margin-top: 40px;
+  }
+
+  .sim-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 3px;
+  }
+
+  .sim-phase {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px;
+  }
+
+  .sim-phase-num {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 2px;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+  }
+
+  .sim-phase-name {
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    line-height: 1.3;
+  }
+
+  .sim-result {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    padding: 4px 8px;
+    border-radius: 3px;
+    margin-top: 8px;
+  }
+
+  .result-blocked { background: rgba(16,185,129,0.1); color: var(--accent-green); border: 1px solid rgba(16,185,129,0.2); }
+  .result-partial { background: rgba(245,158,11,0.1); color: var(--accent-amber); border: 1px solid rgba(245,158,11,0.2); }
+  .result-enters { background: rgba(255,59,92,0.1); color: var(--accent-red); border: 1px solid rgba(255,59,92,0.2); }
+
+  .sim-detail {
+    font-size: 11px;
+    color: #64748b;
+    margin-top: 6px;
+    line-height: 1.4;
+  }
+
+  /* RISK LEGEND */
+  .legend {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 3px;
+    margin-top: 40px;
+  }
+
+  .legend-item {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px;
+  }
+
+  .legend-icon {
+    font-size: 20px;
+    margin-bottom: 6px;
+  }
+
+  .legend-title {
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+
+  .legend-desc {
+    font-size: 11px;
+    color: var(--text-muted);
+    line-height: 1.4;
+  }
+
+  /* FOOTER */
+  .footer {
+    margin-top: 40px;
+    text-align: center;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+  }
+
+  .divider {
+    height: 1px;
+    background: var(--border);
+    margin: 24px 0;
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+
+  <div class="header">
+    <h1>ADR-207 — Referencia Visual</h1>
+    <h2>Arquitectura de Seguridad VPS</h2>
+    <div class="meta">Stack: Hetzner CX22 + Ubuntu 24.04 + Docker + N8N + PostgreSQL · 2 mayo 2026</div>
+  </div>
+
+  <div class="attack-section">
+    <div class="section-label">Vector de ataque → capas de defensa</div>
+
+    <div class="attacker-entry">
+      <span class="internet-label">▶ INTERNET / ATACANTE</span>
+      <span style="font-size:11px; color: var(--text-dim); font-family: 'IBM Plex Mono', monospace;">única puerta pública: /webhook/...</span>
+    </div>
+    <div class="arrow-down">↓</div>
+
+    <div class="layers">
+
+      <!-- CAPA 0 -->
+      <div class="layer layer-0">
+        <div class="layer-header">
+          <span class="layer-number">C.0</span>
+          <span class="layer-name">Cuenta Hetzner</span>
+          <span class="layer-badge badge-critical">Crítico</span>
+        </div>
+        <div class="layer-body">
+          <div class="layer-col">
+            <div class="col-label">Decisiones</div>
+            <div class="col-items">
+              <div class="col-item">2FA obligatorio en cuenta</div>
+              <div class="col-item">DPA firmado antes de deploy</div>
+              <div class="col-item">Registro con datos reales, sin VPN</div>
+            </div>
+          </div>
+          <div class="layer-col">
+            <div class="col-label">Qué protege</div>
+            <div class="col-items">
+              <div class="col-item">Acceso a consola web (bypasea SSH y firewalls)</div>
+              <div class="col-item">Base legal GDPR Art. 28</div>
+            </div>
+          </div>
+          <div class="layer-col">
+            <div class="col-label">Sin esta capa</div>
+            <div class="col-items">
+              <div class="col-item">Phishing en cuenta → acceso total sin SSH</div>
+              <div class="col-item">Sin DPA → procesamiento PII sin base legal</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="arrow-down">↓</div>
+
+      <!-- CAPA 1 -->
+      <div class="layer layer-1">
+        <div class="layer-header">
+          <span class="layer-number">C.1</span>
+          <span class="layer-name">Firewall externo Hetzner — Primera línea</span>
+          <span class="layer-badge badge-critical">Crítico</span>
+        </div>
+        <div class="layer-body">
+          <div class="layer-col">
+            <div class="col-label">Reglas</div>
+            <div class="col-items">
+              <div class="col-item">Puerto 22 → solo tu IP fija</div>
+              <div class="col-item">Puerto 80/443 → abierto</div>
+              <div class="col-item">Todo lo demás → DENY</div>
+            </div>
+          </div>
+          <div class="layer-col">
+            <div class="col-label">Qué protege</div>
+            <div class="col-items">
+              <div class="col-item">El tráfico no llega ni al servidor</div>
+              <div class="col-item">Elimina SSH brute force antes de UFW</div>
+            </div>
+          </div>
+          <div class="layer-col">
+            <div class="col-label">Sin esta capa</div>
+            <div class="col-items">
+              <div class="col-item">Cualquier IP puede intentar SSH</div>
+              <div class="col-item">Fail2Ban debe trabajar solo</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="arrow-down">↓</div>
+
+      <!-- CAPA 2 -->
+      <div class="layer layer-2">
+        <div class="layer-header">
+          <span class="layer-number">C.2</span>
+          <span class="layer-name">Sistema Operativo — Segunda línea</span>
+          <span class="layer-badge badge-high">Alto impacto</span>
+        </div>
+        <div class="layer-body">
+          <div class="layer-col">
+            <div class="col-label">Controles</div>
+            <div class="col-items">
+              <div class="col-item">Usuario no-root</div>
+              <div class="col-item">SSH key-only / root deshabilitado</div>
+              <div class="col-item">UFW alineado con C.1</div>
+              <div class="col-item">Fail2Ban + unattended-upgrades</div>
+            </div>
+          </div>
+          <div class="layer-col">
+            <div class="col-label">Detección</div>
+            <div class="col-items">
+              <div class="col-item">AIDE — integridad de binarios</div>
+              <div class="col-item">auditd — comportamiento Docker</div>
+              <div class="col-item">logwatch — reporte diario</div>
+            </div>
+          </div>
+          <div class="layer-col">
+            <div class="col-label">Sin esta capa</div>
+            <div class="col-items">
+              <div class="col-item">Escalada de privilegios desde cualquier acceso</div>
+              <div class="col-item">Rootkits invisibles sin AIDE</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="arrow-down">↓</div>
+
+      <!-- CAPA 3 -->
+      <div class="layer layer-3">
+        <div class="layer-header">
+          <span class="layer-number">C.3</span>
+          <span class="layer-name">Fix Docker/UFW — El gap que nadie menciona</span>
+          <span class="layer-badge badge-critical">Crítico</span>
+        </div>
+        <div class="layer-body">
+          <div class="layer-col">
+            <div class="col-label">El problema</div>
+            <div class="col-items">
+              <div class="col-item">Docker ignora UFW via iptables directo</div>
+              <div class="col-item">5432:5432 abre PostgreSQL al mundo aunque UFW diga NO</div>
+            </div>
+          </div>
+          <div class="layer-col">
+            <div class="col-label">Solución</div>
+            <div class="col-items">
+              <div class="col-item">Eliminar bloque ports en PostgreSQL</div>
+              <div class="col-item">Solo N8N tiene ports con bind a 127.0.0.1</div>
+              <div class="col-item">Límite de logs Docker: max-size 10m</div>
+            </div>
+          </div>
+          <div class="layer-col">
+            <div class="col-label">Sin esta capa</div>
+            <div class="col-items">
+              <div class="col-item">PostgreSQL expuesto a internet entero</div>
+              <div class="col-item">UFW activo pero inefectivo para Docker</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="arrow-down">↓</div>
+
+      <!-- CAPA 4 -->
+      <div class="layer layer-4">
+        <div class="layer-header">
+          <span class="layer-number">C.4</span>
+          <span class="layer-name">Egress Filtering — La defensa contra exfiltración</span>
+          <span class="layer-badge badge-critical">Crítico</span>
+        </div>
+        <div class="layer-body">
+          <div class="layer-col">
+            <div class="col-label">Implementación</div>
+            <div class="col-items">
+              <div class="col-item">Cadena DOCKER-USER de iptables</div>
+              <div class="col-item">DROP por defecto + ACCEPT 443, 80, 53</div>
+              <div class="col-item">ufw deny outgoing NO es suficiente</div>
+            </div>
+          </div>
+          <div class="layer-col">
+            <div class="col-label">Qué bloquea</div>
+            <div class="col-items">
+              <div class="col-item">Exfiltración de datos a servidor externo</div>
+              <div class="col-item">Reverse shells (puertos arbitrarios)</div>
+              <div class="col-item">Descarga de payloads adicionales</div>
+            </div>
+          </div>
+          <div class="layer-col">
+            <div class="col-label">Sin esta capa</div>
+            <div class="col-items">
+              <div class="col-item">Atacante dentro → saca datos silenciosamente</div>
+              <div class="col-item">Breach GDPR total sin señales</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="arrow-down">↓</div>
+
+      <!-- CAPA 5 -->
+      <div class="layer layer-5">
+        <div class="layer-header">
+          <span class="layer-number">C.5</span>
+          <span class="layer-name">Silos Docker — Aislamiento por proyecto</span>
+          <span class="layer-badge badge-high">Alto impacto</span>
+        </div>
+        <div class="layer-body">
+          <div class="layer-col">
+            <div class="col-label">Arquitectura</div>
+            <div class="col-items">
+              <div class="col-item">Red interna por proyecto (pa1_internal)</div>
+              <div class="col-item">proxy_net solo entre Nginx y N8N</div>
+              <div class="col-item">PostgreSQL sin acceso a proxy_net</div>
+            </div>
+          </div>
+          <div class="layer-col">
+            <div class="col-label">Hardening contenedor</div>
+            <div class="col-items">
+              <div class="col-item">no-new-privileges:true</div>
+              <div class="col-item">user: "1000:1000"</div>
+              <div class="col-item">read_only:true + tmpfs /tmp</div>
+              <div class="col-item">Límites CPU/RAM por contenedor</div>
+            </div>
+          </div>
+          <div class="layer-col">
+            <div class="col-label">Límite conocido</div>
+            <div class="col-items">
+              <div class="col-item">Aislamiento Docker ≠ VM isolation</div>
+              <div class="col-item">Escape de contenedor llega al host</div>
+              <div class="col-item">Mitigado por C.2 + no-new-privileges</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="arrow-down">↓</div>
+
+      <!-- CAPA 6 -->
+      <div class="layer layer-6">
+        <div class="layer-header">
+          <span class="layer-number">C.6</span>
+          <span class="layer-name">PostgreSQL — Privilegios mínimos por proyecto</span>
+          <span class="layer-badge badge-high">Alto impacto</span>
+        </div>
+        <div class="layer-body">
+          <div class="layer-col">
+            <div class="col-label">Modelo</div>
+            <div class="col-items">
+              <div class="col-item">1 usuario + 1 DB por proyecto</div>
+              <div class="col-item">Nunca usuario postgres por defecto</div>
+              <div class="col-item">N8N necesita DDL (TypeORM)</div>
+            </div>
+          </div>
+          <div class="layer-col">
+            <div class="col-label">Bloqueos</div>
+            <div class="col-items">
+              <div class="col-item">REVOKE CONNECT entre DBs de proyectos</div>
+              <div class="col-item">NOSUPERUSER NOCREATEDB NOCREATEROLE</div>
+              <div class="col-item">Verificar: usesuper = false</div>
+            </div>
+          </div>
+          <div class="layer-col">
+            <div class="col-label">Resultado</div>
+            <div class="col-items">
+              <div class="col-item">N8N GeoLabor comprometido → no ve datos PA1</div>
+              <div class="col-item">Blast radius contenido a 1 proyecto</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="arrow-down">↓</div>
+
+      <!-- CAPA 7 -->
+      <div class="layer layer-7">
+        <div class="layer-header">
+          <span class="layer-number">C.7</span>
+          <span class="layer-name">Nginx — TLS, Rate Limiting, Webhook</span>
+          <span class="layer-badge badge-medium">Perimetral</span>
+        </div>
+        <div class="layer-body">
+          <div class="layer-col">
+            <div class="col-label">TLS</div>
+            <div class="col-items">
+              <div class="col-item">Solo TLSv1.2 + TLSv1.3</div>
+              <div class="col-item">HSTS activo</div>
+              <div class="col-item">Certbot no es suficiente sin config explícita</div>
+            </div>
+          </div>
+          <div class="layer-col">
+            <div class="col-label">Webhook</div>
+            <div class="col-items">
+              <div class="col-item">Rate: 2r/s burst=10 sin nodelay</div>
+              <div class="col-item">Content-Type: solo application/json</div>
+              <div class="col-item">max_body_size: 1M</div>
+              <div class="col-item">Timeouts: 10s body + header</div>
+            </div>
+          </div>
+          <div class="layer-col">
+            <div class="col-label">Acceso panel</div>
+            <div class="col-items">
+              <div class="col-item">Panel N8N → solo tu IP</div>
+              <div class="col-item">Nginx logs → logrotate 14 días (GDPR)</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="arrow-down">↓</div>
+
+      <!-- CAPA 8 -->
+      <div class="layer layer-8">
+        <div class="layer-header">
+          <span class="layer-number">C.8</span>
+          <span class="layer-name">Backup y Recuperación</span>
+          <span class="layer-badge badge-high">Resiliencia</span>
+        </div>
+        <div class="layer-body">
+          <div class="layer-col">
+            <div class="col-label">Qué</div>
+            <div class="col-items">
+              <div class="col-item">pg_dump por proyecto + .env completo</div>
+              <div class="col-item">N8N_ENCRYPTION_KEY incluida siempre</div>
+              <div class="col-item">Configuración Nginx</div>
+            </div>
+          </div>
+          <div class="layer-col">
+            <div class="col-label">Cómo</div>
+            <div class="col-items">
+              <div class="col-item">Cifrado GPG antes de salir del VPS</div>
+              <div class="col-item">Destino: Hetzner Storage Box (EU, DPA)</div>
+              <div class="col-item">Rotación: 7 días + 4 semanas</div>
+            </div>
+          </div>
+          <div class="layer-col">
+            <div class="col-label">Verificación</div>
+            <div class="col-items">
+              <div class="col-item">Dry-run mensual obligatorio</div>
+              <div class="col-item">Snapshot VPS post-hardening</div>
+              <div class="col-item">RTO objetivo: &lt; 30 minutos</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="arrow-down">↓</div>
+
+      <!-- CAPA 9 -->
+      <div class="layer layer-9">
+        <div class="layer-header">
+          <span class="layer-number">C.9</span>
+          <span class="layer-name">Seguridad de Workflows N8N — ADR-208</span>
+          <span class="layer-badge badge-process">Proceso</span>
+        </div>
+        <div class="layer-body">
+          <div class="layer-col">
+            <div class="col-label">Principio</div>
+            <div class="col-items">
+              <div class="col-item">La infra contiene el daño</div>
+              <div class="col-item">Los workflows SON el daño</div>
+              <div class="col-item">Auditoría antes de producción</div>
+            </div>
+          </div>
+          <div class="layer-col">
+            <div class="col-label">3 Preguntas de auditoría</div>
+            <div class="col-items">
+              <div class="col-item">¿Qué entra y está validado?</div>
+              <div class="col-item">¿Acceso mínimo necesario?</div>
+              <div class="col-item">¿Canales de salida auditados?</div>
+            </div>
+          </div>
+          <div class="layer-col">
+            <div class="col-label">Vulnerabilidades PA1</div>
+            <div class="col-items">
+              <div class="col-item">HMAC placeholder → resolver pre-deploy</div>
+              <div class="col-item">Capa 4 con PII → reconstruir (ADR-210)</div>
+              <div class="col-item">messaggio sin sanitizar → añadir en procesador-body1</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- SIMULACIÓN DE ATAQUE -->
+  <div class="simulation">
+    <div class="section-label">Simulación de ataque — resultado por fase (ChatGPT + Gemini + DeepSeek)</div>
+    <div class="sim-grid">
+      <div class="sim-phase">
+        <div class="sim-phase-num">FASE 1</div>
+        <div class="sim-phase-name">Reconocimiento externo</div>
+        <div class="sim-detail">DNS lookup, escaneo de puertos, enumeración de endpoints</div>
+        <div class="sim-result result-blocked">✓ CONTENIDO</div>
+        <div class="sim-detail" style="margin-top:6px">Firewall Hetzner + Nginx → sin fuga de información. Endpoint no trivial ralentiza enumeración.</div>
+      </div>
+      <div class="sim-phase">
+        <div class="sim-phase-num">FASE 2</div>
+        <div class="sim-phase-name">Abuso del webhook</div>
+        <div class="sim-detail">Flood + replay attack + payload malicioso</div>
+        <div class="sim-result result-partial">⚡ PARCIAL</div>
+        <div class="sim-detail" style="margin-top:6px">Rate limiting contiene el flood. Replay attack: deuda técnica — HMAC sin timestamp. Payload: pasa si HMAC es placeholder.</div>
+      </div>
+      <div class="sim-phase">
+        <div class="sim-phase-num">FASE 3-5</div>
+        <div class="sim-phase-name">Compromiso N8N → PostgreSQL</div>
+        <div class="sim-detail">Explotación de lógica de workflow → acceso a DB</div>
+        <div class="sim-result result-enters">⚠ ENTRA (1 proyecto)</div>
+        <div class="sim-detail" style="margin-top:6px">Puede acceder a DB de UN proyecto. REVOKE CONNECT bloquea los otros. Blast radius contenido por silos.</div>
+      </div>
+      <div class="sim-phase">
+        <div class="sim-phase-num">FASE 6-8</div>
+        <div class="sim-phase-name">Exfiltración + persistencia</div>
+        <div class="sim-detail">Intento de sacar datos + establecer persistencia</div>
+        <div class="sim-result result-blocked">✓ BLOQUEADO</div>
+        <div class="sim-detail" style="margin-top:6px">DOCKER-USER bloquea salida. auditd detecta persistencia. Escape de contenedor muy difícil con no-new-privileges.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- PROTOCOLO DE INCIDENTE -->
+  <div class="simulation">
+    <div class="section-label">Protocolo de respuesta ante incidente — orden inapelable</div>
+    <div class="sim-grid">
+      <div class="sim-phase" style="border-left: 3px solid var(--accent-red)">
+        <div class="sim-phase-num">PASO 1</div>
+        <div class="sim-phase-name">AISLAR</div>
+        <div class="sim-detail">Panel Hetzner → quitar acceso público al firewall. Dejar solo tu IP. Detiene exfiltración activa.</div>
+      </div>
+      <div class="sim-phase" style="border-left: 3px solid var(--accent-amber)">
+        <div class="sim-phase-num">PASO 2</div>
+        <div class="sim-phase-name">SNAPSHOT</div>
+        <div class="sim-detail">Hetzner → snapshot del VPS actual. Evidencia forense antes de tocar nada. Sin esto no hay prueba documental.</div>
+      </div>
+      <div class="sim-phase" style="border-left: 3px solid var(--accent-blue)">
+        <div class="sim-phase-num">PASO 3</div>
+        <div class="sim-phase-name">INVESTIGAR</div>
+        <div class="sim-detail">audit.log, docker logs, nginx logs, ps aux, netstat -tulpn, docker ps, crontab -l</div>
+      </div>
+      <div class="sim-phase" style="border-left: 3px solid var(--accent-purple)">
+        <div class="sim-phase-num">PASO 4</div>
+        <div class="sim-phase-name">NOTIFICAR</div>
+        <div class="sim-detail">Si hay brecha PII: autoridad de control en 72h (GDPR Art. 33). El snapshot es la documentación del incidente.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer" style="margin-top:32px">
+    DIAGRAMA DE SEGURIDAD VPS · PABLO CUEVAS · ADR-207 · 2 MAYO 2026 · TRIANGULACIÓN CLAUDE + GEMINI + DEEPSEEK + CHATGPT
+  </div>
+
+</div>
+</body>
+</html>
