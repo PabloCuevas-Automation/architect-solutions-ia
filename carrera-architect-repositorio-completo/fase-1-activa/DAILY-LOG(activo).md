@@ -783,43 +783,71 @@ bajo Art. 9 GDPR. El HMAC con timestamp pasa de Bloque 7 a prerequisito de produ
 - `audits/workflows/sistema-leads-enriquecido-audit.md` →
   RENOMBRAR a `sistema-leads-enriquecido_5layer_v1_17-03-2026.md`
 
-### Pendiente para próxima sesión
+## Sesión — 04 de mayo 2026
 
-**FASE A — Resolver vulnerabilidades (en local, antes de contratar Hetzner):**
+### Estado al inicio
+Dos audits pendientes de generar para el workflow sistema-leads-enriquecido.
 
-1. **Implementar HMAC real en Capa 1**
-   - Reemplazar placeholder por validación real de firma HMAC
-   - Añadir timestamp en el payload del formulario
-   - Ventana de rechazo: > 300 segundos
-   - Verificar con Thunder Client: sin header → rechaza, firma inválida → rechaza, firma válida → procesa
+### Lo que se hizo
 
-2. **Reconstruir Capa 4 según ADR-206 y ADR-207**
-   - Eliminar nome, cognome, email, messaggio de los nodos de Telegram
-   - Nuevo formato: ID + servicio + acción + riesgo + link
-   - El link apunta a la interfaz de administración (prerequisito: VPS operativo)
-   - Verificar que el mensaje de Telegram NO contiene PII
+**Pregunta previa — GDPR y uso de IA en desarrollo**
+Aclarado que GDPR audita sistemas y datos, no metodología de construcción.
+Usar IA como herramienta de desarrollo es irrelevante regulatoriamente.
+Regla operativa establecida: nunca compartir PII real con Claude — siempre
+datos sintéticos. El JSON de N8N es seguro si las credenciales están en vault
+(solo aparecen IDs, no keys en claro). Verificado sobre el JSON exportado.
 
-3. **Sanitizar messaggio en procesador-body1**
-   - Añadir escape de HTML antes del INSERT en PostgreSQL
-   - Verificar con payload `<script>alert('xss')</script>` → debe almacenarse sanitizado
+**Audits generados (sobre JSON real del workflow)**
+- sistema-leads-enriquecido_5layer_v2_03-05-2026.md — re-audit completo,
+  supersede v1 de marzo. Incorpora Capas 2 y 3 añadidas desde entonces.
+- sistema-leads-enriquecido_security_03-05-2026.md — primer security audit
+  formal según ADR-009. Tres preguntas: inputs, acceso mínimo, outputs.
+- Ambos guardados en sistema-leads-pablocuevas/audits/workflows/
+- Archivo de marzo renombrado a sistema-leads-enriquecido_5layer_v1_18-03-2026.md
 
-4. **Re-auditar sistema-leads-enriquecido:**
-   - `sistema-leads-enriquecido_5layer_v2_02-05-2026.md` — actualizar estado de deudas resueltas
-   - `sistema-leads-enriquecido_security_02-05-2026.md` — nuevo security audit (ADR-009)
+**Hallazgos nuevos identificados en los audits**
+1. Bug crítico: capa3-registrar-abstract-error era dead end — el lead nunca
+   llegaba a enriquecedor-clasificador cuando Abstract fallaba. La lógica
+   de fallback abstractFallo=true existía pero nunca se ejecutaba.
+2. Switch1 huérfano — dead code de iteración anterior, no conectado al flujo.
+3. SQL injection via string interpolation en los 7 nodos PostgreSQL.
+4. Nodos con nombres genéricos: If, If1 (no siguen kebab-case descriptivo).
 
-**FASE B — VPS (después de resolver FASE A):**
-- Contratar Hetzner CX22 (datacenter Alemania o Finlandia)
-- Firmar DPA inmediatamente tras contratar
-- Ejecutar RUNBOOK-VPS-001.md completo
-- Completar CHECKLIST-PRE-PRODUCCION-PA1.md (todos los ítems en ✅)
-- Snapshot post-hardening antes de primer proyecto
+**Fixes implementados**
+- Fix 1: Añadido capa3-restaurar-datos-abstract-error conectado a
+  enriquecedor-clasificador. Patrón idéntico al restaurador del path success.
+- Fix 2: Sanitización centralizada en capa1-validacion-hmac. Función
+  sanitizeStr() que escapa comillas simples y convierte null/undefined a ''.
+  Protege todos los nodos PostgreSQL downstream sin tocarlos.
+  Principio aplicado: sanitize at the boundary.
 
-**FASE C — Deploy PA1:**
-- Completar checklist pre-producción
-- Deploy con vulnerabilidades resueltas
-- Primer lead real en producción
+**Verificación en pgAdmin**
+- Tabla eventos: filas 10, 11, 12 con lead_id 6 y timestamp de hoy.
+  lead_recibido + abstract_consultado + clasificacion_realizada. ✅
+- Tabla leads: fila 2 con todos los campos completos, sin undefined. ✅
+- Campos accion/razon/prioridad/nivel_resolucion en null — correcto y esperado.
+  El UPDATE post-clasificación es deuda conocida, no bug nuevo.
 
----
+**Commit**
+fix: sanitización SQL en Capa 1 + conectar ruta error Abstract + audits
+5-layer v2 y security
 
-**Nota de sesión**: Sesión íntegramente de arquitectura y planificación.
-Próxima sesión arranca directo en código — HMAC real en Capa 1.
+### Decisiones tomadas
+- Sanitización centralizada en Capa 1 > parametrización en 7 nodos (Query
+  Parameters de N8N tiene comportamiento inconsistente, ya generó problemas
+  anteriores). Un punto de control protege todo el sistema downstream.
+- Audits se versionan, no se reescriben. v1 → v2 con deudas resueltas
+  marcadas y hallazgos nuevos añadidos. La secuencia es evidencia auditable.
+- Patrón establecido: JSON de N8N exportado es el input correcto para debug
+  y audit con Claude, siempre que credenciales estén en vault.
+
+### Estado al cierre
+Sistema funcional en desarrollo local con dos bloqueos de producción menos.
+Bloqueos resueltos: SQL injection + ruta error Abstract.
+Bloqueos pendientes para VPS: Capa 4 reconstrucción (ADR-207) + retención
+automática PII (Bloque 6) + HMAC real (Bloque 7).
+
+### Próxima sesión
+Reconstrucción Capa 4 (ADR-207): reemplazar los tres nodos notificadores
+Telegram para que envíen solo un link a interfaz admin, sin PII.
+Prerequisito directo para deploy en VPS.

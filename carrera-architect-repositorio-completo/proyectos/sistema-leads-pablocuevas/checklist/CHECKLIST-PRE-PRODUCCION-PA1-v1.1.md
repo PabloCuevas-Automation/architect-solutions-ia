@@ -1,10 +1,12 @@
 # CHECKLIST PRE-PRODUCCIÓN — Sistema PA1
 ## Criterios de "Listo para Producción"
 
-**Versión**: 1.0  
-**Fecha**: 2 de mayo 2026  
+**Versión**: 1.1  
+**Fecha**: 10 de mayo 2026  
+**Supersede**: CHECKLIST-PRE-PRODUCCION-PA1.md v1.0 (2 mayo 2026)  
+**Cambios v1.1**: F7 actualizado — sanitización via sanitizeStr() implementada en Capa 1 (04/05/2026). Descripción de verificación ajustada para reflejar el patrón real.  
 **Uso**: Completar íntegramente antes del primer lead real  
-**Referencia**: ADR-209 — Secuencia de deploy  
+**Referencia**: ADR-207 (Capa 4), ADR-208 (Firebase), ADR-010 (secuencia deploy)  
 **Instrucción**: Cada ítem debe ser ✅ verificado, no solo asumido.  
 Un ítem sin verificar práctica es ❌ aunque esté implementado.
 
@@ -85,9 +87,10 @@ Un ítem sin verificar práctica es ❌ aunque esté implementado.
 | F4 | Capa 4 reconstruida — sin PII en Telegram | Procesar lead de prueba y verificar que el mensaje de Telegram NO contiene nombre, email ni messaggio | ☐ |
 | F5 | Link de la notificación Telegram resuelve | Hacer clic en el link de la notificación — debe abrir la interfaz de administración con autenticación | ☐ |
 | F6 | Interfaz de administración con autenticación | Acceder sin credenciales — debe rechazar | ☐ |
-| F7 | messaggio sanitizado contra XSS | Enviar lead con `messaggio: "<script>alert('xss')</script>"` y verificar que se almacena sanitizado en PostgreSQL | ☐ |
-| F8 | Workflow de reporte semanal auditado | Completar audit template — adjuntar al proyecto | ☐ |
-| F9 | Workflow de limpieza GDPR auditado | Completar audit template — adjuntar al proyecto | ☐ |
+| F7 | Sanitización SQL activa en Capa 1 — patrón sanitize at the boundary | **Contexto**: `sanitizeStr()` implementada en `capa1-validacion-hmac` (04/05/2026 — ver daily log). Escapa comillas simples y convierte null/undefined a '' antes de que el payload llegue a cualquier nodo PostgreSQL downstream. No usa query parameters (comportamiento inconsistente en N8N — ver ADR-202). **Verificación**: Enviar lead con `nome: "O'Brien"` — debe almacenarse correctamente en PostgreSQL sin error. Enviar lead con `messaggio: "'; DROP TABLE leads; --"` — debe almacenarse como string literal, sin ejecutar. | ☐ |
+| F8 | messaggio sanitizado contra XSS | Enviar lead con `messaggio: "<script>alert('xss')</script>"` y verificar que se almacena sanitizado en PostgreSQL | ☐ |
+| F9 | Workflow de reporte semanal auditado | Completar audit template — adjuntar al proyecto | ☐ |
+| F10 | Workflow de limpieza GDPR auditado | Completar audit template — adjuntar al proyecto | ☐ |
 
 ---
 
@@ -121,8 +124,8 @@ Un ítem sin verificar práctica es ❌ aunque esté implementado.
 | Campo | Valor |
 |-------|-------|
 | **Bloques completados** | A: ☐ B: ☐ C: ☐ D: ☐ E: ☐ F: ☐ G: ☐ H: ☐ |
-| **Ítems totales** | 40 |
-| **Ítems en ✅** | ___ / 40 |
+| **Ítems totales** | 41 |
+| **Ítems en ✅** | ___ / 41 |
 | **Aprobado para producción** | ☐ SÍ (todos en ✅) ☐ NO |
 | **Fecha de aprobación** | _______________ |
 | **Firmado por** | Pablo Cuevas |
@@ -133,4 +136,5 @@ Si un solo ítem está en ❌, el sistema no va a producción.
 ---
 
 **Documento creado**: 2 de mayo 2026  
+**v1.1**: 10 de mayo 2026 — F7 actualizado con sanitizeStr() pattern, F8-F10 renumerados  
 **Próxima revisión**: Al completar Bloque 6 + resolver Bloque F
